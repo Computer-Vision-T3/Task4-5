@@ -140,7 +140,56 @@ void AppController::runModule2()
 // ── Module 3 ─────────────────────────────────────────────────────────
 void AppController::runModule3()
 {
-    m_window->setStatusMessage("Module 3: Not Implemented Yet", false);
+    auto* params = m_window->getTopTaskBar()->getParameterBox();
+    cv::Mat src  = m_state.getImageA();
+
+    int    methodIdx  = params->comboIndex("segMethod",     0);
+    double spatialRad = params->dblValue  ("segSpatialRad", 10.0);
+    double colorRad   = params->dblValue  ("segColorRad",   10.0);
+
+    Segmentation::Result result;
+
+    switch (methodIdx)
+    {
+        case 0:
+            result = Segmentation::meanShift(src, spatialRad, colorRad);
+            break;
+        case 1:
+            result = Segmentation::agglomerative(src, spatialRad, colorRad);
+            break;
+        default:
+            m_window->setStatusMessage("Unknown segmentation method", false);
+            return;
+    }
+
+    m_state.setOutput(result.segmented);
+    m_window->getPanelOut()->displayImage(result.segmented);
+    m_window->getPanelOut()->setTimingMs(result.timingMs);
+
+    QString extra = QString(
+        "Segments found: <b>%1</b><br>"
+        "Spatial radius (hs): <b>%2</b> px<br>"
+        "Colour radius  (hr): <b>%3</b>")
+        .arg(result.numSegments)
+        .arg(spatialRad, 0, 'f', 1)
+        .arg(colorRad,   0, 'f', 1);
+
+    static const char* methodNames[] = { "Mean Shift", "Agglomerative Clustering" };
+
+    showDetectionReport(
+        QString(methodNames[methodIdx]),
+        result.numSegments,
+        result.timingMs,
+        src.channels() == 3,
+        extra
+    );
+
+    m_window->setStatusMessage(
+        QString("%1 done  |  %2 segments  |  %3 ms")
+            .arg(methodNames[methodIdx])
+            .arg(result.numSegments)
+            .arg(result.timingMs, 0, 'f', 1),
+        true);
 }
 
 // ── Module 4 ─────────────────────────────────────────────────────────
