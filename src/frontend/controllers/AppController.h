@@ -1,44 +1,48 @@
-#ifndef APPCONTROLLER_H
-#define APPCONTROLLER_H
+#pragma once
 
 #include <QObject>
 #include <QString>
-#include "../MainWindow.h"
+#include <QStringList>
+#include <QVariantMap>
 #include "ImageStateManager.h"
 
 class AppController : public QObject {
     Q_OBJECT
-public:
-    explicit AppController(MainWindow* window, QObject* parent = nullptr);
+    Q_PROPERTY(int currentTask READ currentTask WRITE setCurrentTask NOTIFY taskChanged)
 
-private slots:
-    void handleTaskChange(int taskIndex);
-    void handleApply();
-    void handleClear();
-    void handleSave();
+public:
+    explicit AppController(QObject* parent = nullptr);
+
+    int currentTask() const { return m_currentTask; }
+    void setCurrentTask(int index);
+
+    ImageStateManager& getState() { return m_state; }
+
+    // ── QML/Web Invokable Functions ──────────────────────────────────
+    Q_INVOKABLE void handleApply(const QVariantMap& params = QVariantMap());
+    Q_INVOKABLE void handleClear();
+    Q_INVOKABLE void handleSave(const QString& filePath);
+    Q_INVOKABLE void loadImage(const QString& panelRole, const QString& localPath);
+    Q_INVOKABLE QString getMethodName(int task, int methodIdx) const;
+    Q_INVOKABLE void requestImageLoad(const QString& role);
+
+signals:
+    void taskChanged();
+    void processingStarted();
+    void processingFinished(QString methodName, double timeMs, int resultCount, double threshold, QString extra);
+    void errorOccurred(QString message);
+    
+    // NEW: Signal to send Base64 image data to the HTML Canvas!
+    void imageReady(QString canvasId, QString base64Data); 
 
 private:
-    // ── Helpers that call backend modules ─────────────────────────────
     void runModule1();
     void runModule2();
     void runModule3();
     void runModule4();
     void runModule5();
 
-    // ── Result display ─────────────────────────────────────────────────
-    void showDetectionReport(const QString& methodName,
-                             int kpCount,
-                             double timingMs,
-                             bool isColor,
-                             const QString& extra = {});
-    void showMatchingReport(const QString& methodName,
-                            int matchCount,
-                            double timingMs,
-                            const QString& extra = {});
-
-    MainWindow*       m_window  = nullptr;
     ImageStateManager m_state;
     int               m_currentTask = 1;
+    QVariantMap       m_currentParams; 
 };
-
-#endif // APPCONTROLLER_H 

@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vision Lab</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0B0C10;--panel:#13151B;--surface:#1A1D26;--border:#252836;
+  --accent:#7C3AED;--accent2:#00E5FF;--accent3:#2D9B6F;
+  --text:#E8E6F0;--muted:#6B6E80;--warn:#EF9F27;--danger:#E24B4A;
+  --accent-soft:rgba(124,58,237,.15);--accent2-soft:rgba(0,229,255,.1);
+}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans','Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;user-select:none}
+
+/* ── Animations ─────────────────────────────────────── */
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes scan{0%{top:-2px}100%{top:100%}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:translateX(0)}}
+@keyframes counterUp{from{opacity:0;transform:scale(.75)}to{opacity:1;transform:scale(1)}}
+@keyframes waveform{0%,100%{transform:scaleY(.2)}50%{transform:scaleY(1)}}
+@keyframes ripple{0%{transform:scale(0);opacity:.5}100%{transform:scale(3.5);opacity:0}}
+@keyframes particleRise{0%{transform:translateY(0) scale(1);opacity:.9}100%{transform:translateY(-90px) scale(0);opacity:0}}
+@keyframes glow{0%,100%{opacity:0}30%,70%{opacity:1}}
+@keyframes shimmer{0%{background-position:-500px 0}100%{background-position:500px 0}}
+@keyframes progressRun{0%{width:0%}100%{width:100%}}
+@keyframes dotBlink{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes floatIn{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes resultReveal{from{opacity:0;filter:blur(8px)}to{opacity:1;filter:blur(0)}}
+@keyframes borderGlow{0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,0)}50%{box-shadow:0 0 20px 3px rgba(124,58,237,.3)}}
+@keyframes taskbarProgress{from{width:0}to{width:100%}}
+@keyframes statusPop{0%{transform:scale(.8)}70%{transform:scale(1.1)}100%{transform:scale(1)}}
+
+/* ── Layout ─────────────────────────────────────── */
+.app{display:grid;grid-template-columns:196px 1fr;height:100vh;overflow:hidden}
+
+/* ── Sidebar ─────────────────────────────────────── */
+.sidebar{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+
+.logo-area{padding:18px 16px 14px;border-bottom:1px solid var(--border)}
+.logo-v{font-size:22px;font-weight:900;letter-spacing:-.04em;line-height:1}
+.logo-v span{color:var(--accent2)}
+.logo-sub{font-size:8px;font-weight:800;letter-spacing:.4em;color:var(--accent2);margin-top:1px;opacity:.7}
+.live-badge{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:10px;color:var(--accent3);font-weight:600}
+.status-orb{width:6px;height:6px;background:var(--accent3);border-radius:50%;animation:pulse 1.8s ease-in-out infinite;flex-shrink:0}
+
+.nav-section{padding:10px 8px 0;flex:1;overflow-y:auto}
+.nav-label{font-size:9px;font-weight:800;letter-spacing:.12em;color:var(--muted);padding:8px 8px 5px;opacity:.8}
+.nav-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;cursor:pointer;transition:all .18s;position:relative;overflow:hidden;margin-bottom:1px}
+.nav-item::before{content:'';position:absolute;inset:0;background:var(--accent-soft);opacity:0;transition:opacity .2s;border-radius:9px}
+.nav-item:hover::before{opacity:1}
+.nav-item.active{background:rgba(124,58,237,.18)}
+.nav-item.active::after{content:'';position:absolute;left:0;top:18%;height:64%;width:3px;background:var(--accent);border-radius:0 3px 3px 0}
+.nav-num{font-size:10px;color:var(--muted);font-weight:700;min-width:14px;font-variant-numeric:tabular-nums}
+.nav-text{font-size:11.5px;font-weight:600;color:var(--muted);transition:color .18s}
+.nav-item.active .nav-text,.nav-item:hover .nav-text{color:var(--text)}
+.nav-item.active .nav-text{color:#C4B5FD}
+.nav-badge{margin-left:auto;font-size:8px;font-weight:800;padding:2px 5px;border-radius:4px;background:var(--accent-soft);color:#A78BFA;letter-spacing:.03em}
+
+.sidebar-footer{padding:10px 14px 14px;border-top:1px solid var(--border)}
+.footer-label{font-size:9px;color:var(--muted);margin-bottom:6px;font-weight:600;letter-spacing:.06em}
+.waveform-wrap{display:flex;align-items:center;gap:2px;height:22px}
+.wbar{width:3px;min-height:3px;background:var(--accent);border-radius:2px;transform-origin:bottom;transition:background .3s}
+.wbar:nth-child(1){animation:waveform .6s ease-in-out infinite}
+.wbar:nth-child(2){animation:waveform .75s .08s ease-in-out infinite}
+.wbar:nth-child(3){animation:waveform .5s .16s ease-in-out infinite}
+.wbar:nth-child(4){animation:waveform .9s .07s ease-in-out infinite}
+.wbar:nth-child(5){animation:waveform .65s .22s ease-in-out infinite}
+.wbar:nth-child(6){animation:waveform .8s .12s ease-in-out infinite}
+.wbar:nth-child(7){animation:waveform .55s .05s ease-in-out infinite}
+.wbar:nth-child(8){animation:waveform .7s .18s ease-in-out infinite}
+.wbar.active{background:var(--accent2)!important}
+
+/* ── Main ─────────────────────────────────────── */
+.main-area{display:grid;grid-template-rows:48px auto 1fr;overflow:hidden}
+
+/* ── Header ─────────────────────────────────────── */
+.header{background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:12px;flex-shrink:0}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-size:12px}
+.bc-base{color:var(--muted)}
+.bc-sep{color:var(--border);font-size:14px}
+.bc-active{color:#C4B5FD;font-weight:700;transition:all .25s}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.hint-tag{font-size:9px;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 7px;font-weight:700;letter-spacing:.03em;cursor:default}
+.theme-btn{background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:10px;font-weight:700;padding:4px 10px;cursor:pointer;transition:all .2s}
+.theme-btn:hover{border-color:var(--accent);color:#C4B5FD}
+
+/* ── Taskbar ─────────────────────────────────────── */
+.taskbar{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:14px;flex-shrink:0;position:relative;overflow:hidden;min-height:72px;transition:min-height .25s}
+.taskbar-progress{position:absolute;bottom:0;left:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3));width:0;transition:width .08s linear;border-radius:1px}
+.taskbar-progress.animating{animation:taskbarProgress 1.8s cubic-bezier(.4,0,.2,1) forwards}
+
+.param-group{display:flex;flex-direction:column;gap:4px}
+.param-label{font-size:8.5px;font-weight:800;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+
+select,input[type=number]{background:var(--panel);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:11px;font-weight:600;padding:5px 10px;cursor:pointer;outline:none;font-family:inherit;transition:border-color .2s}
+select:hover,input[type=number]:hover{border-color:rgba(124,58,237,.4)}
+select:focus,input[type=number]:focus{border-color:var(--accent)}
+#methodSelect{min-width:164px}
+input[type=number]{width:72px;text-align:center}
+input[type=checkbox]{accent-color:var(--accent);cursor:pointer}
+
+.checkbox-label{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer;font-weight:600;transition:color .2s}
+.checkbox-label:hover{color:var(--text)}
+.checkbox-label input{margin:0}
+
+.btn-group{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.run-status{font-size:10px;font-weight:800;padding:3px 9px;border-radius:6px;white-space:nowrap;transition:all .2s;animation:statusPop .3s cubic-bezier(.175,.885,.32,1.275)}
+.run-status.ready{background:rgba(45,155,111,.12);color:#5DCAA5;border:1px solid rgba(45,155,111,.2)}
+.run-status.working{background:rgba(124,58,237,.15);color:#C4B5FD;border:1px solid rgba(124,58,237,.3);animation:pulse .7s ease-in-out infinite}
+.run-status.done{background:rgba(45,155,111,.15);color:#5DCAA5;border:1px solid rgba(45,155,111,.25)}
+.run-status.error{background:rgba(226,75,74,.1);color:#F09595;border:1px solid rgba(226,75,74,.2)}
+
+.btn-clear{background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;transition:all .18s;font-family:inherit}
+.btn-clear:hover{border-color:var(--danger);color:#F09595}
+
+.btn-save{background:transparent;border:1px solid rgba(124,58,237,.35);border-radius:8px;color:#A78BFA;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;transition:all .18s;font-family:inherit}
+.btn-save:hover{background:var(--accent-soft);border-color:var(--accent)}
+
+.btn-run{background:var(--accent);border:none;border-radius:9px;color:#fff;font-size:12px;font-weight:800;padding:7px 20px;cursor:pointer;transition:all .18s;position:relative;overflow:hidden;font-family:inherit;letter-spacing:.02em}
+.btn-run:hover:not(:disabled){background:#8B5CF6;transform:translateY(-1px);box-shadow:0 4px 16px rgba(124,58,237,.4)}
+.btn-run:active:not(:disabled){transform:scale(.96)}
+.btn-run:disabled{background:#4C1D95;cursor:not-allowed;opacity:.7}
+.ripple-el{position:absolute;border-radius:50%;background:rgba(255,255,255,.25);animation:ripple .65s linear;pointer-events:none}
+
+/* ── Taskbar param sections ─────────────────────────── */
+.taskbar-section{display:flex;align-items:center;gap:14px;transition:all .3s}
+.taskbar-section.hidden{display:none}
+.params-extra{display:flex;align-items:center;gap:14px;transition:all .3s}
+.params-extra.hidden{display:none}
+
+/* ── Canvas Area ─────────────────────────────────────── */
+.canvas-area{display:grid;grid-template-columns:1fr 1px 1fr;overflow:hidden}
+.divider-v{background:var(--border)}
+
+.input-side{padding:10px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.output-side{padding:10px;display:flex;gap:8px;overflow:hidden}
+
+/* ── Panel ─────────────────────────────────────── */
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:13px;display:flex;flex-direction:column;overflow:hidden;position:relative;transition:border-color .3s}
+.panel:hover{border-color:rgba(124,58,237,.2)}
+
+.panel-hdr{padding:9px 12px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;flex-shrink:0}
+.panel-title{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.badge{font-size:8.5px;font-weight:800;padding:2px 7px;border-radius:4px;letter-spacing:.05em}
+.badge-a{background:rgba(45,155,111,.18);color:#5DCAA5}
+.badge-b{background:rgba(0,229,255,.1);color:#67E8F9}
+.badge-out{background:rgba(124,58,237,.18);color:#C4B5FD}
+.panel-res{font-size:9px;color:var(--muted);margin-left:auto;font-variant-numeric:tabular-nums}
+.panel-time{font-size:9px;font-weight:800;padding:2px 8px;border-radius:5px;background:rgba(239,159,39,.12);color:var(--warn);border:1px solid rgba(239,159,39,.2);display:none}
+
+.load-btn{background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);border-radius:6px;color:#A78BFA;font-size:10px;font-weight:700;padding:3px 9px;cursor:pointer;transition:all .2s;font-family:inherit;flex-shrink:0}
+.load-btn:hover{background:rgba(124,58,237,.22);border-color:var(--accent)}
+
+.panel-body{flex:1;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;min-height:0}
+
+.grid-overlay{position:absolute;inset:0;opacity:.035;background-image:linear-gradient(var(--text) 1px,transparent 1px),linear-gradient(90deg,var(--text) 1px,transparent 1px);background-size:28px 28px;pointer-events:none}
+
+.panel-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;animation:resultReveal .5s ease}
+.panel-canvas.shown{display:block}
+
+/* ── Placeholder ─────────────────────────────────────── */
+.placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;text-align:center;pointer-events:none}
+.ph-icon{font-size:28px;opacity:.3;filter:grayscale(1)}
+.ph-text{font-size:11.5px;color:var(--muted);line-height:1.5;opacity:.7}
+.ph-hint{font-size:10px;color:var(--muted);opacity:.45}
+
+/* ── Processing Overlay ─────────────────────────────── */
+.proc-overlay{position:absolute;inset:0;background:rgba(11,12,16,.88);display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:12px;z-index:10;backdrop-filter:blur(2px)}
+.proc-overlay.visible{display:flex}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent2),transparent);animation:scan 1.1s linear infinite;z-index:1}
+.spinner-ring{width:38px;height:38px;border:2.5px solid rgba(124,58,237,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .75s linear infinite}
+.proc-text{font-size:12px;font-weight:700;color:var(--accent2)}
+.proc-sub{font-size:10px;color:var(--muted);animation:dotBlink 1.1s step-end infinite}
+
+/* ── Result glows ─────────────────────────────────────── */
+.bottom-glow{position:absolute;bottom:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent3));opacity:0;transition:opacity .3s;border-radius:0 0 12px 12px}
+.bottom-glow.active{opacity:1;animation:glow 3s ease 2}
+
+/* ── Results Sidebar ─────────────────────────────────── */
+.results-sidebar{width:220px;background:var(--panel);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:border-color .3s}
+.results-sidebar:hover{border-color:rgba(124,58,237,.2)}
+.results-hdr{padding:10px 14px;border-bottom:1px solid var(--border);font-size:11px;font-weight:800;color:var(--text);letter-spacing:.05em;display:flex;align-items:center;gap:6px}
+.results-hdr::after{content:'';flex:1;height:1px;background:var(--border)}
+.results-body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+
+/* ── Info Card ─────────────────────────────────────── */
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 12px;transition:border-color .3s}
+.info-card:hover{border-color:rgba(124,58,237,.2)}
+.ic-title{font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:5px}
+.ic-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);flex-shrink:0}
+
+/* ── Metric row ─────────────────────────────────────── */
+.metric-row{display:flex;align-items:center;justify-content:space-between;font-size:11px;margin-bottom:3px}
+.metric-label{color:var(--muted)}
+.metric-val{font-weight:800;font-size:12.5px}
+.mv-purple{color:#C4B5FD}
+.mv-gold{color:var(--warn)}
+.mv-green{color:#5DCAA5}
+
+/* ── Step list ─────────────────────────────────────── */
+.algo-steps{display:flex;flex-direction:column;gap:2px}
+.step-item{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted);padding:3px 0;transition:color .25s}
+.step-item.done{color:var(--accent3)}
+.step-item.active{color:var(--accent2)}
+.step-dot{width:6px;height:6px;border-radius:50%;background:var(--border);flex-shrink:0;transition:all .25s}
+.step-item.done .step-dot{background:var(--accent3)}
+.step-item.active .step-dot{background:var(--accent2);animation:pulse .6s infinite}
+
+/* ── Badge tags ─────────────────────────────────────── */
+.badge-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.btag{font-size:9px;font-weight:800;padding:3px 7px;border-radius:4px;letter-spacing:.04em}
+.btag-p{background:rgba(124,58,237,.14);color:#C4B5FD}
+.btag-g{background:rgba(45,155,111,.14);color:#5DCAA5}
+.btag-o{background:rgba(239,159,39,.12);color:var(--warn)}
+
+/* ── Shimmer text ─────────────────────────────────────── */
+.shimmer{background:linear-gradient(90deg,var(--muted) 0%,var(--text) 35%,var(--muted) 55%,var(--muted) 100%);background-size:500px 100%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:shimmer 2.5s linear infinite}
+
+/* ── Counter animation ─────────────────────────────── */
+.counter-anim{animation:counterUp .55s cubic-bezier(.175,.885,.32,1.275) both}
+
+/* ── Particle ─────────────────────────────────────── */
+.particle{position:absolute;border-radius:50%;animation:particleRise 1s ease-out forwards;pointer-events:none}
+
+/* ── Light theme ─────────────────────────────────────── */
+body.light{--bg:#F4F3F8;--panel:#FAFAFC;--surface:#F0EFF5;--border:#E1DFF0;--text:#1A1828;--muted:#7A7892;--accent:#6D28D9;--accent2:#0284C7;--accent3:#0D7B56}
+
+/* ── Progress bar ─────────────────────────────────────── */
+.prog-wrap{height:2px;background:var(--border);border-radius:2px;overflow:hidden;width:90px;display:none}
+.prog-wrap.visible{display:block}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;width:0;transition:width .1s linear}
+
+/* ── Dual input for module 5 ─────────────────────────── */
+.dual-inputs{display:flex;flex-direction:column;gap:8px;height:100%}
+.dual-inputs .panel{flex:1}
+
+/* ── Module param sets ─────────────────────────────── */
+.param-set{display:flex;align-items:center;gap:14px}
+.param-set.hidden{display:none!important}
+
+/* ── Scrollbar ─────────────────────────────────────── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="logo-area">
+      <div class="logo-v">VISION<span>.</span></div>
+      <div class="logo-sub">LAB</div>
+      <div class="live-badge"><span class="status-orb"></span>Live Processing</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Image Segmentation</div>
+      <div class="nav-item active" id="nav0" onclick="switchTask(0)">
+        <span class="nav-num">1</span><span class="nav-text">Global Thresholding</span>
+      </div>
+      <div class="nav-item" id="nav1" onclick="switchTask(1)">
+        <span class="nav-num">2</span><span class="nav-text">Spatial Clustering</span>
+      </div>
+      <div class="nav-item" id="nav2" onclick="switchTask(2)">
+        <span class="nav-num">3</span><span class="nav-text">Advanced Segment</span>
+      </div>
+      <div class="nav-label" style="margin-top:10px">Face Recognition</div>
+      <div class="nav-item" id="nav3" onclick="switchTask(3)">
+        <span class="nav-num">4</span><span class="nav-text">Face Detection</span>
+        <span class="nav-badge">2-img</span>
+      </div>
+      <div class="nav-item" id="nav4" onclick="switchTask(4)">
+        <span class="nav-num">5</span><span class="nav-text">Face Recognition</span>
+        <span class="nav-badge">PCA</span>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="footer-label">Processing Activity</div>
+      <div class="waveform-wrap" id="waveform">
+        <div class="wbar" style="height:6px"></div>
+        <div class="wbar" style="height:10px"></div>
+        <div class="wbar" style="height:8px"></div>
+        <div class="wbar" style="height:14px"></div>
+        <div class="wbar" style="height:6px"></div>
+        <div class="wbar" style="height:11px"></div>
+        <div class="wbar" style="height:9px"></div>
+        <div class="wbar" style="height:5px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main-area">
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="breadcrumb">
+        <span class="bc-base">Workspace</span>
+        <span class="bc-sep">›</span>
+        <span class="bc-active" id="breadcrumb">Global Thresholding</span>
+      </div>
+      <div class="header-right">
+        <span class="hint-tag" onclick="handleRun({clientX:0,clientY:0})" style="cursor:pointer">↵ Run</span>
+        <span class="hint-tag" onclick="handleClear()" style="cursor:pointer">⌫ Clear</span>
+        <span class="hint-tag" onclick="handleSave()" style="cursor:pointer">⇧S Save</span>
+        <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">☼ Light Mode</button>
+      </div>
+    </div>
+
+    <!-- TASKBAR -->
+    <div class="taskbar" id="taskbar">
+      <div class="param-group">
+        <div class="param-label">Method</div>
+        <select id="methodSelect" onchange="onMethodChange()"></select>
+      </div>
+
+      <!-- Module 1: tile params -->
+      <div class="param-set" id="psTile">
+        <div class="param-group">
+          <div class="param-label">Tile Size (px)</div>
+          <input type="number" id="tileSize" value="31" min="3" max="201" step="2">
+        </div>
+        <div class="param-group">
+          <div class="param-label">Local Method</div>
+          <select id="localMethod" style="min-width:110px">
+            <option>Otsu / tile</option>
+            <option>Optimal / tile</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Module 2: k-means params -->
+      <div class="param-set hidden" id="psKmeans">
+        <div class="param-group">
+          <div class="param-label">K (clusters)</div>
+          <input type="number" id="kVal" value="4" min="2" max="16">
+        </div>
+        <div class="param-group">
+          <div class="param-label">Max Iter</div>
+          <input type="number" id="kIter" value="50" min="10" max="200">
+        </div>
+      </div>
+
+      <!-- Module 2: region growing params -->
+      <div class="param-set hidden" id="psRegion">
+        <div class="param-group">
+          <div class="param-label">Tolerance</div>
+          <input type="number" id="tolerance" value="15" min="1" max="100">
+        </div>
+      </div>
+
+      <!-- Module 2: window size (local thresh) -->
+      <div class="param-set hidden" id="psWindow">
+        <div class="param-group">
+          <div class="param-label">Window Size</div>
+          <input type="number" id="windowSize" value="25" min="5" max="101" step="2">
+        </div>
+      </div>
+
+      <!-- Module 3: mean shift / agglo params -->
+      <div class="param-set hidden" id="psSpatial">
+        <div class="param-group">
+          <div class="param-label">Spatial Radius</div>
+          <input type="number" id="spatialRad" value="10" min="3" max="80">
+        </div>
+        <div class="param-group">
+          <div class="param-label">Color Radius</div>
+          <input type="number" id="colorRad" value="10" min="3" max="80">
+        </div>
+      </div>
+
+      <!-- Color channels checkbox (modules 1) -->
+      <div class="param-set" id="psColor">
+        <label class="checkbox-label">
+          <input type="checkbox" id="colorChk"> Apply to color channels
+        </label>
+      </div>
+
+      <div class="btn-group">
+        <div class="prog-wrap" id="progWrap"><div class="prog-fill" id="progFill"></div></div>
+        <div class="run-status ready" id="runStatus">Ready</div>
+        <button class="btn-clear" onclick="handleClear()">Clear</button>
+        <button class="btn-save" onclick="handleSave()">Save</button>
+        <button class="btn-run" id="runBtn" onclick="handleRun(event)">Run Module</button>
+      </div>
+      <div class="taskbar-progress" id="tbProgress"></div>
+    </div>
+
+    <!-- CANVAS AREA -->
+    <div class="canvas-area" id="canvasArea">
+
+      <!-- INPUT SIDE -->
+      <div class="input-side" id="inputSide">
+        <!-- single image (modules 1,2,3) -->
+        <div class="panel" id="panelASingle" style="flex:1">
+          <div class="panel-hdr">
+            <span class="panel-title">Source Image</span>
+            <span class="badge badge-a">IMAGE A</span>
+            <span class="panel-res" id="resA"></span>
+            <button class="load-btn" onclick="cppBackend.requestImageLoad('A')">Load Image</button>
+          </div>
+          <div class="panel-body" id="panelABody">
+            <div class="grid-overlay"></div>
+            <canvas id="canvasA" class="panel-canvas shown"></canvas>
+            <div class="proc-overlay" id="overlayA">
+              <div class="scan-line"></div>
+              <div class="spinner-ring"></div>
+              <div class="proc-text">Analyzing pixels…</div>
+              <div class="proc-sub">Building histogram</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- dual images (modules 4,5) -->
+        <div class="dual-inputs" id="dualInputs" style="display:none">
+          <div class="panel" style="flex:1">
+            <div class="panel-hdr">
+              <span class="panel-title">Face Image A</span>
+              <span class="badge badge-a">IMAGE A</span>
+              <span class="panel-res" id="resA2"></span>
+              <button class="load-btn" onclick="cppBackend.requestImageLoad('A2')">Load</button>
+            </div>
+            <div class="panel-body" id="panelA2Body">
+              <div class="grid-overlay"></div>
+              <canvas id="canvasA2" class="panel-canvas shown"></canvas>
+              <div class="proc-overlay" id="overlayA2">
+                <div class="scan-line"></div>
+                <div class="spinner-ring"></div>
+                <div class="proc-text">Detecting faces…</div>
+                <div class="proc-sub">Haar cascade scan</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="flex:1">
+            <div class="panel-hdr">
+              <span class="panel-title">Reference / Gallery</span>
+              <span class="badge badge-b">IMAGE B</span>
+              <span class="panel-res" id="resB"></span>
+              <button class="load-btn" onclick="cppBackend.requestImageLoad('B')">Load</button>
+            </div>
+            <div class="panel-body" id="panelBBody">
+              <div class="grid-overlay"></div>
+              <canvas id="canvasB" class="panel-canvas shown"></canvas>
+              <div class="proc-overlay" id="overlayB">
+                <div class="scan-line"></div>
+                <div class="spinner-ring"></div>
+                <div class="proc-text">Building eigenspace…</div>
+                <div class="proc-sub">PCA projection</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider-v"></div>
+
+      <!-- OUTPUT SIDE -->
+      <div class="output-side">
+        <div class="panel" id="outputPanel" style="flex:1">
+          <div class="panel-hdr">
+            <span class="panel-title">Result</span>
+            <span class="badge badge-out">OUTPUT</span>
+            <span class="panel-res" id="resOut"></span>
+            <span class="panel-time" id="timeBadge">— ms</span>
+          </div>
+          <div class="panel-body">
+            <div class="grid-overlay"></div>
+            <canvas id="canvasOut" class="panel-canvas"></canvas>
+            <div id="placeholderOut" class="placeholder">
+              <div class="ph-icon">⬡</div>
+              <div class="ph-text">Waiting for processing…</div>
+              <div class="ph-hint">Select a method and click Run Module</div>
+            </div>
+            <div class="proc-overlay" id="overlayOut">
+              <div class="scan-line"></div>
+              <div class="spinner-ring"></div>
+              <div class="proc-text" id="procText">Computing…</div>
+              <div class="proc-sub" id="procSub">Please wait</div>
+            </div>
+            <div class="bottom-glow" id="bottomGlow"></div>
+          </div>
+        </div>
+
+        <!-- RESULTS SIDEBAR -->
+        <div class="results-sidebar">
+          <div class="results-hdr">Results</div>
+          <div class="results-body" id="resultsBody">
+            <div class="info-card">
+              <div class="ic-title"><div class="ic-dot"></div>Algorithm</div>
+              <div style="font-size:11px;color:var(--muted);line-height:1.6">Click Run Module to see analysis results here.</div>
+            </div>
+            <div class="info-card">
+              <div class="ic-title"><div class="ic-dot" style="background:var(--warn)"></div>Metrics</div>
+              <div class="badge-tags">
+                <span class="btag btag-p">Results: —</span>
+                <span class="btag btag-o">Time: —</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /canvas-area -->
+
+  </div><!-- /main-area -->
+</div><!-- /app -->
+<!-- Load the Qt WebChannel API -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+<script>
+    // Global variable to hold our C++ AppController
+    let cppBackend = null;
+
+    // Initialize the WebChannel Pipe
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+        // "backend" matches the name we registered in main.cpp
+        cppBackend = channel.objects.backend;
+        
+        // 1. Listen for C++ Errors
+        cppBackend.errorOccurred.connect(function(msg) {
+            alert("C++ Error: " + msg);
+            resetUI();
+            isRunning = false;
+        });
+        
+        // 2. Listen for Processing Finished
+        cppBackend.processingFinished.connect(function(methodName, timeMs, resultCount, threshold, extra) {
+          // This MUST pass all 5 arguments to the function
+          finishRun(methodName, timeMs, resultCount, threshold, extra); 
+        });
+
+        // 3. Listen for Images (This handles the Base64!)
+        cppBackend.imageReady.connect(function(canvasId, base64Data) {
+            if (!base64Data) return;
+            let img = new Image();
+            img.onload = function() {
+                let canvas = document.getElementById(canvasId); 
+                let ctx = canvas.getContext('2d');
+
+                // Force output canvas to be visible so we can get its dimensions
+                if (canvasId === 'canvasOut') canvas.classList.add('shown');
+
+                // Re-calibrate resolution if it was 0
+                if (canvas.width === 0 || canvas.height === 0) {
+                    canvas.width = canvas.clientWidth || canvas.parentElement.clientWidth;
+                    canvas.height = canvas.clientHeight || canvas.parentElement.clientHeight;
+                }
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Calculate aspect ratio scaling
+                let hRatio = canvas.width / img.width;
+                let vRatio = canvas.height / img.height;
+                let ratio  = Math.min(hRatio, vRatio);
+
+                let centerShiftX = (canvas.width - img.width * ratio) / 2;
+                let centerShiftY = (canvas.height - img.height * ratio) / 2;  
+
+                ctx.drawImage(img, 0, 0, img.width, img.height,
+                                  centerShiftX, centerShiftY, img.width * ratio, img.height * ratio);
+            };
+            img.src = base64Data;
+        });
+    });
+</script>
+<script>
+const TASKS=[
+  {
+    name:'Global Thresholding',
+    methods:['Optimal (Iterative)','Otsu','Spectral (Multi-Modal)','Local (Adaptive)'],
+    dual:false,
+    steps:[
+      ['Building histogram','Normalizing pixel values'],
+      ['Smoothing histogram','Gaussian kernel convolution'],
+      ['Finding threshold','Iterating to convergence'],
+      ['Applying binary mask','Segmentation pass'],
+      ['Done','Threshold located']
+    ]
+  },
+  {
+    name:'Spatial Clustering',
+    methods:['Local Thresholding','Region Growing','K-Means'],
+    dual:false,
+    steps:[
+      ['Partitioning image','Dividing into tiles'],
+      ['Per-region analysis','Local statistics pass'],
+      ['Clustering pixels','Assigning labels'],
+      ['Merging output','Stitching segments'],
+      ['Done','']
+    ]
+  },
+  {
+    name:'Advanced Segmentation',
+    methods:['Mean Shift','Agglomerative'],
+    dual:false,
+    steps:[
+      ['Embedding pixels','5D joint color-space'],
+      ['Shifting modes','Per-pixel convergence'],
+      ['Merging nearby modes','Distance threshold pass'],
+      ['Painting segments','Assigning color labels'],
+      ['Done','']
+    ]
+  },
+  {
+    name:'Face Detection',
+    methods:['Haar Cascade','HOG + SVM'],
+    dual:true,
+    steps:[
+      ['Extracting features','Gradient computation'],
+      ['Sliding window','Multi-scale scan'],
+      ['Classifier pass','Cascade stages'],
+      ['NMS suppression','Merging overlaps'],
+      ['Done','Faces located']
+    ]
+  },
+  {
+    name:'Face Recognition',
+    methods:['PCA / Eigenfaces','LDA / Fisherfaces'],
+    dual:true,
+    steps:[
+      ['PCA projection','Building eigenspace'],
+      ['Encoding faces','Eigenface coefficients'],
+      ['Nearest-neighbor','Distance metric pass'],
+      ['Matching result','Identity resolved'],
+      ['Done','']
+    ]
+  }
+];
+
+let currentTask=0;
+let isRunning=false;
+let demoLoaded={A:false,A2:false,B:false};
+
+// ── Task switching ──────────────────────────────────
+function resizeCanvases() {
+    ['canvasA', 'canvasA2', 'canvasB', 'canvasOut'].forEach(id => {
+        let c = document.getElementById(id);
+        if (c) {
+            // Fallback to parent panel-body size if the canvas is currently hidden
+            let w = c.clientWidth || c.parentElement.clientWidth;
+            let h = c.clientHeight || c.parentElement.clientHeight;
+            
+            if (w > 0 && h > 0) {
+                c.width = w;
+                c.height = h;
+            }
+        }
+    });
+}
+// ── Task switching ──────────────────────────────────
+function switchTask(i) {
+  if (isRunning) return;
+  
+  // 1. Update local JavaScript state
+  currentTask = i;
+
+  // 2. CRITICAL: Notify C++ backend that the module has changed
+  // We use i + 1 because C++ uses 1-based indexing (Module 1-5)
+  if (cppBackend) {
+      cppBackend.currentTask = i + 1;
+  }
+
+  // 3. Update Sidebar Visuals
+  document.querySelectorAll('.nav-item').forEach((el, j) => el.classList.toggle('active', j === i));
+  document.getElementById('breadcrumb').textContent = TASKS[i].name;
+
+  // 4. Update Method Dropdown for the selected module
+  const sel = document.getElementById('methodSelect');
+  sel.innerHTML = TASKS[i].methods.map(m => `<option>${m}</option>`).join('');
+
+  // 5. Toggle Single vs. Dual Input Layout
+  const dual = TASKS[i].dual;
+  document.getElementById('panelASingle').style.display = dual ? 'none' : 'flex';
+  document.getElementById('dualInputs').style.display = dual ? 'flex' : 'none';
+
+  // 6. Refresh Parameter Groups and Reset Output UI
+  onMethodChange();
+  resetUI();
+
+  // 7. Recalibrate Canvas Resolutions
+  // We use a 20ms timeout to ensure the browser has finished 
+  // rearranging the layout before we measure the panel widths.
+  setTimeout(resizeCanvases, 20);
+}
+
+// ── Method change → show/hide param groups ──────────
+function onMethodChange(){
+  const t=currentTask;
+  const method=document.getElementById('methodSelect').value;
+
+  // hide all extras first
+  ['psTile','psKmeans','psRegion','psWindow','psSpatial','psColor'].forEach(id=>{
+    document.getElementById(id).classList.add('hidden');
+  });
+
+  if(t===0){
+    document.getElementById('psColor').classList.remove('hidden');
+    if(method.includes('Local')) document.getElementById('psTile').classList.remove('hidden');
+  } else if(t===1){
+    if(method.includes('K-Means')){
+      document.getElementById('psKmeans').classList.remove('hidden');
+    } else if(method.includes('Region')){
+      document.getElementById('psRegion').classList.remove('hidden');
+    } else {
+      document.getElementById('psWindow').classList.remove('hidden');
+    }
+  } else if(t===2){
+    document.getElementById('psSpatial').classList.remove('hidden');
+  }
+}
+
+// ── UI Reset ──────────────────────────────────────
+function resetUI(){
+  const co=document.getElementById('canvasOut');
+  co.classList.remove('shown');
+  document.getElementById('placeholderOut').style.display='';
+  document.getElementById('timeBadge').style.display='none';
+  setStatus('ready','Ready');
+  document.getElementById('progWrap').classList.remove('visible');
+  document.getElementById('progFill').style.width='0';
+  document.getElementById('bottomGlow').classList.remove('active');
+  document.getElementById('tbProgress').style.width='0';
+  document.getElementById('tbProgress').classList.remove('animating');
+  renderResultsDefault();
+}
+
+function renderResultsDefault(){
+  document.getElementById('resultsBody').innerHTML=`
+    <div class="info-card">
+      <div class="ic-title"><div class="ic-dot"></div>Algorithm</div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.6">Click Run Module to see analysis results here.</div>
+    </div>
+    <div class="info-card">
+      <div class="ic-title"><div class="ic-dot" style="background:var(--warn)"></div>Metrics</div>
+      <div class="badge-tags">
+        <span class="btag btag-p">Results: —</span>
+        <span class="btag btag-o">Time: —</span>
+      </div>
+    </div>`;
+}
+
+// ── Status helper ─────────────────────────────────
+function setStatus(cls,text){
+  const el=document.getElementById('runStatus');
+  el.className='run-status '+cls;
+  el.textContent=text;
+}
+
+// ── Clear ─────────────────────────────────────────
+function handleClear(){
+  if(isRunning) return;
+  resetUI();
+  spawnParticles(document.getElementById('canvasOut'),'#F09595',8);
+  
+  // TELL C++ TO CLEAR
+  if(cppBackend) cppBackend.handleClear();
+}
+
+// ── Save ─────────────────────────────────────────
+function handleSave(){
+  const c=document.getElementById('canvasOut');
+  if(!c.classList.contains('shown')){alert('Nothing to save yet — run a module first.');return;}
+  const a=document.createElement('a');
+  a.download='vision_lab_result.png';
+  a.href=c.toDataURL();
+  a.click();
+}
+
+// ── Run ─────────────────────────────────────────
+// ── Run ─────────────────────────────────────────
+function handleRun(e) {
+  if(isRunning) return;
+  isRunning = true;
+
+  // 1. Gather all dynamic parameters from the UI to send to C++
+  let params = {
+      "method": document.getElementById('methodSelect').selectedIndex,
+      "tileSize": parseInt(document.getElementById('tileSize').value) || 31,
+      "localMethod": document.getElementById('localMethod').selectedIndex,
+      "k": parseInt(document.getElementById('kVal').value) || 3,
+      "window": parseInt(document.getElementById('windowSize').value) || 11,
+      "spatialRad": parseFloat(document.getElementById('spatialRad').value) || 10.0,
+      "colorRad": parseFloat(document.getElementById('colorRad').value) || 10.0,
+      "tolerance": parseFloat(document.getElementById('tolerance').value) || 15.0,
+      "color": document.getElementById('colorChk') ? document.getElementById('colorChk').checked : false
+  };
+
+  // 2. Call C++ backend to actually run the OpenCV module
+  if(cppBackend) {
+      cppBackend.handleApply(params);
+  }
+
+  // 3. UI Animations (Loading State)
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+  if(e && e.clientX) addRipple(btn, e);
+
+  setStatus('working', 'Computing…');
+  document.getElementById('progWrap').classList.add('visible');
+  document.getElementById('placeholderOut').style.display = 'none';
+  document.getElementById('overlayOut').classList.add('visible');
+
+  // Taskbar progress bar animation
+  const tbp = document.getElementById('tbProgress');
+  tbp.style.width = '0';
+  tbp.classList.remove('animating');
+  void tbp.offsetWidth; // Trigger reflow
+  tbp.classList.add('animating');
+
+  activateWaveform(true);
+
+  const steps = TASKS[currentTask].steps;
+  const method = document.getElementById('methodSelect').value;
+  
+  updateResultsSidebar(method, steps, -1);
+
+  // 4. Start cosmetic step animation 
+  // (This advances visually until C++ calls finishRun via the WebChannel signal)
+  window.currentStepIdx = 0; 
+  
+  function runStep() {
+    if(!isRunning) return; // Stop if C++ already finished
+    if(window.currentStepIdx >= steps.length - 1) return; // Wait for C++ at the last step
+    
+    const [label, sub] = steps[window.currentStepIdx];
+    document.getElementById('procText').textContent = label + '…';
+    document.getElementById('procSub').textContent = sub;
+    
+    updateResultsSidebar(method, steps, window.currentStepIdx);
+    setProgress(window.currentStepIdx / (steps.length - 1));
+    
+    if(TASKS[currentTask].dual && window.currentStepIdx === 0) document.getElementById('overlayA2').classList.add('visible');
+    if(TASKS[currentTask].dual && window.currentStepIdx === 2) document.getElementById('overlayA2').classList.remove('visible');
+    
+    window.currentStepIdx++;
+    window.stepTimer = setTimeout(runStep, 550 + Math.random() * 520);
+  }
+  
+  window.stepTimer = setTimeout(runStep, 280);
+}
+
+
+// ── Finish Run (Triggered by C++) ──────────────────────────────
+function loadDemo(panel) {
+    // We redirect this to C++ now
+    if(cppBackend) cppBackend.requestImageLoad(panel);
+}
+
+// Ensure ONLY ONE version of finishRun exists:
+function finishRun(methodName, timeMs, resultCount, threshold, extra) {
+  clearTimeout(window.stepTimer); 
+  const steps = TASKS[currentTask].steps;
+
+  document.getElementById('overlayOut').classList.remove('visible');
+  document.getElementById('overlayA').classList.remove('visible');
+  if(document.getElementById('overlayA2')) document.getElementById('overlayA2').classList.remove('visible');
+  if(document.getElementById('overlayB')) document.getElementById('overlayB').classList.remove('visible');
+
+  document.getElementById('canvasOut').classList.add('shown');
+
+  const tb = document.getElementById('timeBadge');
+  tb.textContent = timeMs < 1000 ? `${timeMs.toFixed(1)} ms` : `${(timeMs/1000).toFixed(2)} s`;
+  tb.style.display = 'inline-block';
+
+  setProgress(1);
+  setStatus('done', 'Done ✓');
+  document.getElementById('bottomGlow').classList.add('active');
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = false;
+  btn.textContent = 'Run Module';
+  isRunning = false;
+  activateWaveform(false);
+
+  spawnParticles(document.getElementById('canvasOut'), '#A78BFA', 14);
+  updateResultsFinal(methodName, timeMs.toFixed(1), threshold.toFixed(1), resultCount, steps);
+}
+
+// ── Progress ─────────────────────────────────────
+function setProgress(frac){
+  document.getElementById('progFill').style.width=(frac*100)+'%';
+}
+
+// ── Results sidebar during run ───────────────────
+function updateResultsSidebar(method,steps,activeIdx){
+  const stepsHtml=steps.map(([label],i)=>{
+    const cls='step-item'+(i<activeIdx?' done':i===activeIdx?' active':'');
+    return `<div class="${cls}"><div class="step-dot"></div><span>${label}</span></div>`;
+  }).join('');
+  document.getElementById('resultsBody').innerHTML=`
+    <div class="info-card" style="animation:floatIn .3s ease">
+      <div class="ic-title"><div class="ic-dot"></div><span class="shimmer" style="font-size:11px">${method}</span></div>
+      <div class="algo-steps">${stepsHtml}</div>
+    </div>
+    <div class="info-card" style="animation:floatIn .3s ease .08s both">
+      <div class="metric-row"><span class="metric-label">Status</span><span class="metric-val mv-purple" style="font-size:10.5px;animation:pulse .8s infinite">Processing…</span></div>
+    </div>`;
+}
+
+// ── Results sidebar after run ─────────────────────
+function updateResultsFinal(method,timing,threshold,segs,steps){
+  const stepsHtml=steps.map(([label])=>`<div class="step-item done"><div class="step-dot"></div><span>${label}</span></div>`).join('');
+  const t=currentTask;
+  const extraMetrics = t===0
+    ? `<div class="metric-row"><span class="metric-label">Threshold T</span><span class="metric-val mv-purple counter-anim">${threshold}</span></div>`
+    : t===2
+    ? `<div class="metric-row"><span class="metric-label">Segments</span><span class="metric-val mv-green counter-anim">${segs}</span></div>`
+    : t>=3
+    ? `<div class="metric-row"><span class="metric-label">Faces Found</span><span class="metric-val mv-green counter-anim">${Math.floor(1+Math.random()*4)}</span></div>`
+    : `<div class="metric-row"><span class="metric-label">Clusters K</span><span class="metric-val mv-purple counter-anim">${segs}</span></div>`;
+
+  document.getElementById('resultsBody').innerHTML=`
+    <div class="info-card" style="animation:floatIn .3s ease 0s both">
+      <div class="ic-title"><div class="ic-dot"></div>${method}</div>
+      <div class="algo-steps">${stepsHtml}</div>
+    </div>
+    <div class="info-card" style="animation:floatIn .3s ease .12s both">
+      <div class="ic-title"><div class="ic-dot" style="background:var(--warn)"></div>Metrics</div>
+      ${extraMetrics}
+      <div class="metric-row"><span class="metric-label">Time</span><span class="metric-val mv-gold counter-anim">${timing} ms</span></div>
+      <div class="badge-tags">
+        <span class="btag btag-p">⬡ ${segs} regions</span>
+        <span class="btag btag-o">⏱ ${timing} ms</span>
+        <span class="btag btag-g">✓ Done</span>
+      </div>
+    </div>
+    <div class="info-card" style="animation:floatIn .3s ease .22s both;font-size:10.5px;color:var(--muted);line-height:1.6">
+      Analysis complete. Algorithm produced ${segs} distinct regions with high-contrast boundaries.
+    </div>`;
+}
+
+// ── Ripple on Run btn ─────────────────────────────
+function addRipple(btn,e){
+  const rect=btn.getBoundingClientRect();
+  const r=document.createElement('span');
+  r.className='ripple-el';
+  const size=Math.max(rect.width,rect.height)*2.5;
+  r.style.cssText=`width:${size}px;height:${size}px;left:${e.clientX-rect.left-size/2}px;top:${e.clientY-rect.top-size/2}px`;
+  btn.appendChild(r);
+  setTimeout(()=>r.remove(),800);
+}
+
+// ── Particles ─────────────────────────────────────
+function spawnParticles(target,color,count=12){
+  const rect=target.getBoundingClientRect();
+  const container=document.querySelector('.app');
+  const cr=container.getBoundingClientRect();
+  for(let i=0;i<count;i++){
+    const p=document.createElement('div');
+    p.className='particle';
+    const s=3+Math.random()*6;
+    p.style.cssText=`left:${rect.left-cr.left+Math.random()*rect.width}px;top:${rect.top-cr.top+Math.random()*rect.height}px;background:${color};animation-delay:${Math.random()*300}ms;width:${s}px;height:${s}px`;
+    container.appendChild(p);
+    setTimeout(()=>p.remove(),1300);
+  }
+}
+
+// ── Waveform ─────────────────────────────────────
+function activateWaveform(on){
+  document.querySelectorAll('.wbar').forEach((b,i)=>{
+    if(on){
+      b.classList.add('active');
+      b.style.animation=`waveform ${.35+Math.random()*.55}s ease-in-out infinite`;
+      b.style.animationDelay=`${i*.07}s`;
+    } else {
+      b.classList.remove('active');
+      b.style.animation=`waveform ${.6+i*.1}s ${i*.08}s ease-in-out infinite`;
+    }
+  });
+}
+
+// ── Canvas drawing ─────────────────────────────────
+function drawNoiseImage(canvas,parent,palette){
+  canvas.width=parent.clientWidth||300;
+  canvas.height=parent.clientHeight||240;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.fillStyle='#080a0e';ctx.fillRect(0,0,W,H);
+  const id=ctx.createImageData(W,H);
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const i=(y*W+x)*4;
+      const nx=x/W,ny=y/H;
+      const v=Math.sin(nx*13)*Math.cos(ny*9)*0.3
+              +Math.sin(nx*4.5+ny*3.2)*0.4
+              +Math.sin(Math.sqrt((nx-.5)**2+(ny-.5)**2)*20)*0.3;
+      if(palette){
+        const idx=Math.min(palette.length-1,Math.floor((v+1)/2*palette.length));
+        const c=palette[idx];
+        id.data[i]=c[0];id.data[i+1]=c[1];id.data[i+2]=c[2];
+      } else {
+        const b=Math.round((v+1)/2*220+18);
+        id.data[i]=b;id.data[i+1]=b;id.data[i+2]=b;
+      }
+      id.data[i+3]=255;
+    }
+  }
+  ctx.putImageData(id,0,0);
+  ctx.strokeStyle='rgba(0,229,255,.12)';ctx.lineWidth=.8;
+  for(let x=0;x<W;x+=28){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+  for(let y=0;y<H;y+=28){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+}
+
+function drawFaceImage(canvas,parent,isFace){
+  canvas.width=parent.clientWidth||300;
+  canvas.height=parent.clientHeight||240;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx.fillStyle='#10121a';ctx.fillRect(0,0,W,H);
+  const cx=W/2,cy=H/2*.85;
+  // simplified oval face
+  const grad=ctx.createRadialGradient(cx,cy,10,cx,cy,Math.min(W,H)*.38);
+  grad.addColorStop(0,'#c8b49a');
+  grad.addColorStop(1,'#7a6050');
+  ctx.fillStyle=grad;ctx.beginPath();
+  ctx.ellipse(cx,cy,W*.22,H*.3,0,0,Math.PI*2);ctx.fill();
+  // eyes
+  ctx.fillStyle='#222';
+  ctx.beginPath();ctx.ellipse(cx-W*.08,cy-H*.04,W*.025,H*.025,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(cx+W*.08,cy-H*.04,W*.025,H*.025,0,0,Math.PI*2);ctx.fill();
+  if(isFace){
+    ctx.strokeStyle='rgba(0,229,255,.7)';ctx.lineWidth=2;ctx.setLineDash([4,4]);
+    ctx.strokeRect(cx-W*.26,cy-H*.32,W*.52,H*.58);
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(0,229,255,.8)';ctx.font=`bold ${Math.round(W*.04)}px DM Sans`;
+    ctx.fillText('Face #1',cx-W*.15,cy-H*.35);
+  }
+  ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;
+  for(let x=0;x<W;x+=24){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+  for(let y=0;y<H;y+=24){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+}
+
+function renderOutput(){
+  const c=document.getElementById('canvasOut');
+  const p=c.parentElement;
+  c.width=p.clientWidth||400;c.height=p.clientHeight||300;
+  const ctx=c.getContext('2d');
+  const method=document.getElementById('methodSelect').value.toLowerCase();
+  const t=currentTask;
+
+  if(t===0){
+    if(method.includes('spectral')){
+      drawNoiseImage(c,p,[[0,0,0],[85,85,85],[170,170,170],[255,255,255]]);
+    } else if(method.includes('local')){
+      const W=c.width,H=c.height;
+      const id=ctx.createImageData(W,H);
+      for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+        const i=(y*W+x)*4;
+        const nx=x/W,ny=y/H;
+        const tx=Math.floor(nx*8),ty=Math.floor(ny*8);
+        const lv=Math.sin(tx*.8+ty*.9)*.4;
+        const v=Math.sin(nx*13)*Math.cos(ny*9)*0.3+Math.sin(nx*4.5+ny*3.2)*0.4+Math.sin(Math.sqrt((nx-.5)**2+(ny-.5)**2)*20)*0.3;
+        const b=v>lv?255:0;id.data[i]=b;id.data[i+1]=b;id.data[i+2]=b;id.data[i+3]=255;
+      }
+      ctx.putImageData(id,0,0);
+    } else {
+      const W=c.width,H=c.height;
+      const id=ctx.createImageData(W,H);
+      for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+        const i=(y*W+x)*4;
+        const nx=x/W,ny=y/H;
+        const v=Math.sin(nx*13)*Math.cos(ny*9)*0.3+Math.sin(nx*4.5+ny*3.2)*0.4+Math.sin(Math.sqrt((nx-.5)**2+(ny-.5)**2)*20)*0.3;
+        const b=v>0?255:0;id.data[i]=b;id.data[i+1]=b;id.data[i+2]=b;id.data[i+3]=255;
+      }
+      ctx.putImageData(id,0,0);
+    }
+  } else if(t===1){
+    const palettes={
+      'k-means':[[124,58,237],[0,229,255],[45,155,111],[239,159,39]],
+      'region':[[80,30,180],[0,180,200],[30,130,80],[200,120,30],[180,50,50]],
+      'local':[[0,0,0],[255,255,255]]
+    };
+    const key=method.includes('k-means')?'k-means':method.includes('region')?'region':'local';
+    drawNoiseImage(c,p,palettes[key]);
+  } else if(t===2){
+    const palette=method.includes('mean')?
+      [[124,58,237],[0,229,255],[45,155,111],[239,159,39],[180,50,50],[100,200,150]]:
+      [[80,20,200],[0,200,220],[20,160,100],[220,140,20],[200,60,40]];
+    drawNoiseImage(c,p,palette);
+  } else if(t===3){
+    drawFaceImage(c,p,true);
+  } else {
+    // recognition: show matching result
+    const W=c.width,H=c.height;
+    ctx.fillStyle='#10121a';ctx.fillRect(0,0,W,H);
+    const cx=W/2,cy=H/2*.85;
+    const grad=ctx.createRadialGradient(cx,cy,8,cx,cy,Math.min(W,H)*.35);
+    grad.addColorStop(0,'#c8b49a');grad.addColorStop(1,'#7a6050');
+    ctx.fillStyle=grad;ctx.beginPath();
+    ctx.ellipse(cx,cy,W*.22,H*.28,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#222';
+    ctx.beginPath();ctx.ellipse(cx-W*.07,cy-H*.04,W*.024,H*.024,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(cx+W*.07,cy-H*.04,W*.024,H*.024,0,0,Math.PI*2);ctx.fill();
+    // match box
+    ctx.strokeStyle='rgba(45,155,111,.9)';ctx.lineWidth=2.5;
+    ctx.strokeRect(cx-W*.26,cy-H*.32,W*.52,H*.58);
+    ctx.fillStyle='rgba(45,155,111,.85)';
+    ctx.fillRect(cx-W*.26,cy+H*.26,W*.52,H*.08);
+    ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(W*.038)}px DM Sans`;
+    ctx.textAlign='center';
+    ctx.fillText('MATCH ✓  conf: 97.2%',cx,cy+H*.31);
+    ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=.6;
+    for(let x=0;x<W;x+=24){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke()}
+    for(let y=0;y<H;y+=24){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+  }
+
+  // subtle grid overlay on result
+  if(t<3){
+    ctx.strokeStyle='rgba(0,229,255,.08)';ctx.lineWidth=.5;
+    for(let x=0;x<c.width;x+=28){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke()}
+  }
+}
+
+// ── Theme toggle ─────────────────────────────────
+function toggleTheme(){
+  document.body.classList.toggle('light');
+  const btn=document.getElementById('themeBtn');
+  btn.textContent=document.body.classList.contains('light')?'☾ Dark Mode':'☼ Light Mode';
+}
+
+// ── Keyboard shortcuts ─────────────────────────────
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+  if(e.key==='Enter'&&!isRunning) handleRun({clientX:0,clientY:0});
+  if(e.key==='Backspace'&&!isRunning) handleClear();
+  if((e.key==='s'||e.key==='S')&&e.shiftKey) handleSave();
+});
+
+// ── Init ─────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  switchTask(0);
+  setTimeout(()=>{
+    // small demo run hint
+    setTimeout(()=>{
+      if(!isRunning) setStatus('ready','Ready — press Enter to run');
+    },1200);
+  },350);
+});
+
+window.addEventListener('resize', () => {
+  // Update the resolution of all canvases
+  resizeCanvases();
+
+  // Optional: Redraw the current images if they exist so they don't disappear
+  if (cppBackend) {
+      // This will trigger C++ to send the images again to fill the new resolution
+      // (Optional logic if you want immediate redraw)
+  }
+});
+</script>
+</html>

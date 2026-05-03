@@ -1,9 +1,12 @@
 #include "AppController.h"
-#include "../MainWindow.h"
-#include "../components/TopTaskBar.h"
-#include "../components/ImagePanel.h"
-#include "../components/ParameterBox.h"
+#include <QUrl>
+#include <QDebug>
+#include <QTimer>
+#include <QByteArray>
+#include <QBuffer>
+#include <QImage>
 #include <QFileDialog>
+#include <QtConcurrent/QtConcurrent>
 
 // Backend Headers
 #include "../../backend/Module1_Thresholding/Thresholding.h"
@@ -12,425 +15,206 @@
 #include "../../backend/Module4_FaceDetection/FaceDetection.h"
 #include "../../backend/Module5_FaceRecognition/FaceRecognition.h"
 
-AppController::AppController(MainWindow *window, QObject *parent) : QObject(parent), m_window(window) {
-    auto *bar = m_window->getTopTaskBar();
-    connect(bar, &TopTaskBar::taskChanged, this, &AppController::handleTaskChange);
-    connect(bar, &TopTaskBar::applyRequested, this, &AppController::handleApply);
-    connect(bar, &TopTaskBar::clearRequested, this, &AppController::handleClear);
-    connect(bar, &TopTaskBar::saveRequested, this, &AppController::handleSave);
+// ── NEW HELPER FUNCTIONS ─────────────────────────────────────────────────
 
-    connect(m_window->getPanelA(), &ImagePanel::imageLoaded, this, [this](const cv::Mat &img) { m_state.setImageA(img); });
-    connect(m_window->getPanelB(), &ImagePanel::imageLoaded, this, [this](const cv::Mat &img) { m_state.setImageB(img); });
-}
-
-void AppController::handleTaskChange(int taskIndex) {
-    m_currentTask = taskIndex;
-    m_window->updateLayoutForTask(taskIndex);
-}
-
-void AppController::handleApply() {
-    if (!m_state.hasImageA()) { m_window->setStatusMessage("Load image A!", false); return; }
-    if ((m_currentTask >= 4) && !m_state.hasImageB()) { m_window->setStatusMessage("Load image B!", false); return; }
-
-    m_window->getTopTaskBar()->setProcessing(true);
-    try {
-        switch (m_currentTask) {
-            case 1: runModule1(); break;
-            case 2: runModule2(); break;
-            case 3: runModule3(); break;
-            case 4: runModule4(); break;
-            case 5: runModule5(); break;
-        }
-    } catch (...) { m_window->setStatusMessage("Backend Error", false); }
-    m_window->getTopTaskBar()->setProcessing(false);
-}
-
-// ── Module 1 ─────────────────────────────────────────────────────────
-
-void AppController::runModule1()
-{
-    auto* params = m_window->getTopTaskBar()->getParameterBox();
-    cv::Mat src  = m_state.getImageA();
- 
-    // ── Read parameters ──────────────────────────────────────────────────────
-    int  methodIdx   = params->comboIndex("threshMethod",  0);
-    bool applyColor  = params->boolValue ("threshColor",   false);
-    int  windowSize  = params->intValue  ("threshWindow",  11);   // local threshold tile
-    int  localMethod = params->comboIndex("threshLocalMethod", 0); // 0=Optimal, 1=Otsu
- 
-    Thresholding::Result result;
- 
-    // ── Dispatch ─────────────────────────────────────────────────────────────
-    switch (methodIdx)
-    {
-        case 0: // Optimal
-            result = Thresholding::optimalThreshold(src, applyColor);
-            break;
-        case 1: // Otsu
-            result = Thresholding::otsuThreshold(src, applyColor);
-            break;
-        case 2: // Spectral
-            result = Thresholding::spectralThreshold(src, applyColor);
-            break;
-        case 3: // Local
-            result = Thresholding::localThreshold(src, windowSize, localMethod);
-            break;
-        default:
-            m_window->setStatusMessage("Unknown method", false);
-            return;
+// Helper to convert cv::Mat to QImage
+QImage matToQImage(const cv::Mat& mat) {
+    if (mat.empty()) return QImage();
+    if (mat.type() == CV_8UC1) {
+        return QImage(mat.data, mat.cols, mat.rows, static_cast<int>(mat.step), QImage::Format_Grayscale8).copy();
+    } else if (mat.type() == CV_8UC3) {
+        return QImage(mat.data, mat.cols, mat.rows, static_cast<int>(mat.step), QImage::Format_BGR888).copy();
     }
- 
-    // ── Push result to output panel ───────────────────────────────────────────
-    m_state.setOutput(result.binary);
-    m_window->getPanelOut()->displayImage(result.binary);
- 
-    // ── Build status / info report ───────────────────────────────────────────
-    static const char* methodNames[] = {
-        "Optimal (Iterative)", "Otsu", "Spectral (Multi-Modal)", "Local (Adaptive)"
-    };
- 
-    // Threshold string  –  may be multiple values for spectral
-    QString threshStr;
-    if (result.thresholds.size() == 1)
-        threshStr = QString("T = %1").arg(result.thresholds[0], 0, 'f', 1);
-    else
-    {
-        QStringList parts;
-        for (double t : result.thresholds)
-            parts << QString::number(t, 'f', 1);
-        threshStr = "T = [" + parts.join(", ") + "]";
+    return QImage();
+}
+
+// Helper to convert cv::Mat to Base64 String for the HTML Canvas
+QString matToBase64(const cv::Mat& mat) {
+    if (mat.empty()) return "";
+    QImage img = matToQImage(mat);
+    QByteArray byteArray;
+    QBuffer buffer(&byteArray);
+    buffer.open(QIODevice::WriteOnly);
+    img.save(&buffer, "PNG"); // PNG preserves crisp edges for threshold masks
+    return QString("data:image/png;base64,") + byteArray.toBase64();
+}
+
+// ────────────────────────────────────────────────────────────────────────
+
+AppController::AppController(QObject *parent) : QObject(parent) {}
+
+void AppController::setCurrentTask(int index) {
+    if (m_currentTask != index) {
+        m_currentTask = index;
+        emit taskChanged();
     }
- 
-    QString extra;
-    if (methodIdx == 0)
-        extra = QString("Converged in <b>%1</b> iterations.<br>%2")
-                    .arg(result.iterations)
-                    .arg(threshStr);
-    else if (methodIdx == 2)
-        extra = QString("<b>%1</b> threshold(s) found (multi-modal).<br>%2")
-                    .arg(result.thresholds.size())
-                    .arg(threshStr);
-    else if (methodIdx == 3)
-        extra = QString("Tile size: <b>%1 × %1</b> px  |  Avg %2")
-                    .arg(windowSize)
-                    .arg(threshStr);
-    else
-        extra = threshStr;
- 
-    showDetectionReport(
-        QString(methodNames[methodIdx]),
-        0,                  // no keypoints for thresholding
-        result.timingMs,
-        (src.channels() == 3 && applyColor),
-        extra
-    );
- 
-    m_window->setStatusMessage(
-        QString("Threshold applied  (%1)  |  %2")
-            .arg(methodNames[methodIdx])
-            .arg(QString("%1 ms").arg(result.timingMs, 0, 'f', 1)),
-        true);
 }
-// ── Module 2 ─────────────────────────────────────────────────────────
-void AppController::runModule2() {
-    auto* params = m_window->getTopTaskBar()->getParameterBox();
-    cv::Mat src  = m_state.getImageA();
-
-    // Pull parameters from your ParameterBox
-    int methodIdx  = params->comboIndex("clusterMethod", 0);
-    int k          = params->intValue("clusterK", 3);
-    int windowSize = params->intValue("clusterWindow", 11);
-
-    Clustering::Result result;
-    QString methodName;
-    QString extraInfo;
-
-    switch (methodIdx) {
-        case 0: 
-            result = Clustering::localThresholding(src, windowSize);
-            methodName = "Local Thresholding";
-            extraInfo = QString("Window size: <b>%1x%1</b>").arg(windowSize);
-            break;
-        case 1: 
-            result = Clustering::regionGrowing(src, windowSize); // Using windowSize as color tolerance
-            methodName = "Region Growing";
-            extraInfo = QString("Color Tolerance: <b>%1</b>").arg(windowSize);
-            break;
-        case 2: 
-            result = Clustering::kMeans(src, k);
-            methodName = "K-Means Clustering";
-            extraInfo = QString("Number of K Clusters: <b>%1</b>").arg(k);
-            break;
-        default:
-            m_window->setStatusMessage("Unknown clustering method", false);
-            return;
+void AppController::requestImageLoad(const QString& role) {
+    QString fileName = QFileDialog::getOpenFileName(nullptr,
+        "Open Image", "", "Image Files (*.png *.jpg *.jpeg *.bmp)");
+    
+    if (!fileName.isEmpty()) {
+        // Use your existing loadImage logic
+        this->loadImage(role, fileName);
     }
-
-    // Push the result to the output panel
-    m_state.setOutput(result.clustered);
-    m_window->getPanelOut()->displayImage(result.clustered);
-    m_window->getPanelOut()->setTimingMs(result.timingMs);
-
-    // Update the Sidebar Report
-    showDetectionReport(
-        methodName,
-        result.numClusters, // Displaying number of clusters instead of keypoints
-        result.timingMs,
-        src.channels() == 3,
-        extraInfo
-    );
-
-    // Update the top task bar status
-    m_window->setStatusMessage(
-        QString("%1 applied | %2 Clusters | %3 ms")
-            .arg(methodName)
-            .arg(result.numClusters)
-            .arg(result.timingMs, 0, 'f', 1),
-        true
-    );
 }
 
-// ── Module 3 ─────────────────────────────────────────────────────────
-void AppController::runModule3()
-{
-    auto* params = m_window->getTopTaskBar()->getParameterBox();
-    cv::Mat src  = m_state.getImageA();
-
-    int    methodIdx  = params->comboIndex("segMethod",     0);
-    double spatialRad = params->dblValue  ("segSpatialRad", 10.0);
-    double colorRad   = params->dblValue  ("segColorRad",   10.0);
-
-    Segmentation::Result result;
-
-    switch (methodIdx)
-    {
-        case 0:
-            result = Segmentation::meanShift(src, spatialRad, colorRad);
-            break;
-        case 1:
-            result = Segmentation::agglomerative(src, spatialRad, colorRad);
-            break;
-        default:
-            m_window->setStatusMessage("Unknown segmentation method", false);
-            return;
+void AppController::loadImage(const QString& panelRole, const QString& localPath) {
+    // Robust path handling: Check if it's already a local path or a file:// URL
+    QString path = localPath;
+    if (path.startsWith("file://")) {
+        path = QUrl(localPath).toLocalFile();
     }
-
-    m_state.setOutput(result.segmented);
-    m_window->getPanelOut()->displayImage(result.segmented);
-    m_window->getPanelOut()->setTimingMs(result.timingMs);
-
-    QString extra = QString(
-        "Segments found: <b>%1</b><br>"
-        "Spatial radius (hs): <b>%2</b> px<br>"
-        "Colour radius  (hr): <b>%3</b>")
-        .arg(result.numSegments)
-        .arg(spatialRad, 0, 'f', 1)
-        .arg(colorRad,   0, 'f', 1);
-
-    static const char* methodNames[] = { "Mean Shift", "Agglomerative Clustering" };
-
-    showDetectionReport(
-        QString(methodNames[methodIdx]),
-        result.numSegments,
-        result.timingMs,
-        src.channels() == 3,
-        extra
-    );
-
-    m_window->setStatusMessage(
-        QString("%1 done  |  %2 segments  |  %3 ms")
-            .arg(methodNames[methodIdx])
-            .arg(result.numSegments)
-            .arg(result.timingMs, 0, 'f', 1),
-        true);
-}
-
-// ── Module 4 ─────────────────────────────────────────────────────────
-void AppController::runModule4()
-{
-    m_window->setStatusMessage("Module 4: Not Implemented Yet", false);
-}
-
-// ── Module 5 ─────────────────────────────────────────────────────────
-void AppController::runModule5()
-{
-    m_window->setStatusMessage("Module 5: Not Implemented Yet", false);
-}
-
-// ── Clear ─────────────────────────────────────────────────────────────────────
-void AppController::handleClear()
-{
-    m_window->getPanelOut()->clear();
-    m_window->getPanelA()->clearKeyPoints();
-    m_window->getPanelA()->clearTiming();
-    m_window->getPanelB()->clearKeyPoints();
-    m_window->getPanelB()->clearTiming();
-    m_state.clearOutput();
-    m_window->setStatusMessage("Outputs cleared", true);
-    m_window->updateLayoutForTask(m_currentTask);
-}
-
-// ── Save ──────────────────────────────────────────────────────────────────────
-void AppController::handleSave()
-{
-    cv::Mat out = m_state.getOutput();
-    if (out.empty())
-    {
-        m_window->setStatusMessage("Nothing to save", false);
+    
+    cv::Mat img = cv::imread(path.toStdString(), cv::IMREAD_COLOR);
+    
+    if (img.empty()) {
+        // This was likely emitting an error because 'path' became empty
+        emit errorOccurred("Failed to load image at: " + path);
         return;
     }
-    QString path = QFileDialog::getSaveFileName(
-        m_window, "Save Result", "",
-        "PNG (*.png);;JPEG (*.jpg);;BMP (*.bmp)");
-    if (!path.isEmpty())
-    {
-        cv::imwrite(path.toStdString(), out);
-        m_window->setStatusMessage("Saved ✓", true);
+
+    if (panelRole == "A" || panelRole == "A2") {
+        m_state.setImageA(img);
+        emit imageReady("canvasA", matToBase64(img));
+        emit imageReady("canvasA2", matToBase64(img));
+    } else {
+        m_state.setImageB(img);
+        emit imageReady("canvasB", matToBase64(img));
     }
 }
 
-// ── HTML report builders ──────────────────────────────────────────────────────
-void AppController::showDetectionReport(const QString &methodName,
-                                        int kpCount, double timingMs,
-                                        bool isColor, const QString &extra)
-{
-    QString timingStr = timingMs < 1000.0
-                            ? QString("%1 ms").arg(timingMs, 0, 'f', 2)
-                            : QString("%1 s").arg(timingMs / 1000.0, 0, 'f', 3);
+void AppController::handleApply(const QVariantMap& params) {
+    m_currentParams = params; 
 
-    QString colorStr = isColor ? "Color (3-ch)" : "Grayscale";
-
-    QString extraHtml;
-    if (!extra.isEmpty())
-    {
-        extraHtml = QString(R"(
-        <div class='card'>
-            <h3>Descriptor Info</h3>
-            <p>%1</p>
-        </div>)")
-                        .arg(extra);
+    if (!m_state.hasImageA()) {
+        emit errorOccurred("Please load Image A first.");
+        return;
     }
 
-    bool dark = m_window->isDark();
-    QString textColor = dark ? "#E0E0E0" : "#2C2825";
-    QString cardBg    = dark ? "#252529" : "#FFFFFF";
-    QString cardBord  = dark ? "#3A3A3F" : "#E6E0F7";
-    QString titleCol  = dark ? "#FFFFFF" : "#2C2825";
-    QString pCol      = dark ? "#A0A0A0" : "#7A7268";
+    emit processingStarted(); 
 
-    QString html = QString(R"(
-<style>
-  body { font-family: 'DM Sans', sans-serif; color: %1; margin: 0; padding: 0; }
-  .card { background: %2; border: 1px solid %3; border-radius: 12px;
-          padding: 14px; margin-bottom: 10px; }
-  h3 { font-size: 14px; font-weight: 800; color: %4; margin: 0 0 6px; }
-  p  { font-size: 12px; color: %5; line-height: 1.7; margin: 4px 0; }
-  .badge      { display:inline-block; background:#EDE8FF; color:#5B4FCF;
-                border-radius:6px; padding:3px 9px; font-size:11px; font-weight:800; margin:2px; }
-  .badge-gold { display:inline-block; background:#FEF3C7; color:#B45309;
-                border-radius:6px; padding:3px 9px; font-size:11px; font-weight:800; margin:2px; }
-  .badge-sage { display:inline-block; background:#E8F5F0; color:#2D9B6F;
-                border-radius:6px; padding:3px 9px; font-size:11px; font-weight:800; margin:2px; }
-  .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-</style>
-<div class='card'>
-  <h3>%6</h3>
-  <p>Algorithm Analysis</p>
-</div>
-<div class='card'>
-  <h3>Metrics</h3>
-  <div class='row'>
-    <span class='badge'>⬡ %7 results</span>
-    <span class='badge-gold'>⏱ %8</span>
-    <span class='badge-sage'>%9</span>
-  </div>
-</div>
-%10
-<div class='card'>
-  <h3>Color Legend</h3>
-  <p>● <span style='color:#2D9B6F;font-weight:700;'>Green</span> — small (&lt;10 px)</p>
-  <p>● <span style='color:#5B4FCF;font-weight:700;'>Purple</span> — medium (10–25 px)</p>
-  <p>● <span style='color:#D85A30;font-weight:700;'>Coral</span> — large (&gt;25 px)</p>
-  <p style='margin-top:8px;font-size:11px;color:#C4BDB4;'>Analysis Complete.</p>
-</div>
-)")
-                       .arg(textColor)
-                       .arg(cardBg)
-                       .arg(cardBord)
-                       .arg(titleCol)
-                       .arg(pCol)
-                       .arg(methodName)
-                       .arg(kpCount)
-                       .arg(timingStr)
-                       .arg(colorStr)
-                       .arg(extraHtml);
-
-    if (auto *sb = m_window->getInfoSidebar())
-        sb->setHtml(html);
+    // Background thread to keep the UI from freezing
+    QtConcurrent::run([this]() {
+        try {
+            // This 'm_currentTask' is what we updated in Step 1
+            switch (m_currentTask) {
+                case 1: runModule1(); break;
+                case 2: runModule2(); break;
+                case 3: runModule3(); break; // Agglomerative lives here
+                case 4: runModule4(); break;
+                case 5: runModule5(); break;
+                default: emit errorOccurred("Invalid Module Selected."); break;
+            }
+        } catch (const std::exception& e) {
+            emit errorOccurred(QString::fromStdString(e.what()));
+        }
+    });
 }
 
-void AppController::showMatchingReport(const QString &methodName,
-                                       int matchCount, double timingMs,
-                                       const QString &extra)
-{
-    QString timingStr = timingMs < 1000.0
-                            ? QString("%1 ms").arg(timingMs, 0, 'f', 2)
-                            : QString("%1 s").arg(timingMs / 1000.0, 0, 'f', 3);
+void AppController::handleClear() {
+    m_state.clearAll();
+    
+    // UPDATE: Send empty strings to clear the images from the HTML UI
+    emit imageReady("canvasA", "");
+    emit imageReady("canvasA2", "");
+    emit imageReady("canvasB", "");
+    emit imageReady("canvasOut", "");
+}
 
-    QString extraHtml;
-    if (!extra.isEmpty())
-        extraHtml = QString("<div class='card'><p>%1</p></div>").arg(extra);
+void AppController::handleSave(const QString& filePath) {
+    QString path = QUrl(filePath).toLocalFile();
+    cv::Mat out = m_state.getOutput();
+    
+    if (out.empty()) {
+        emit errorOccurred("Nothing to save!");
+        return;
+    }
 
-    bool dark = m_window->isDark();
-    QString textColor = dark ? "#E0E0E0" : "#2C2825";
-    QString cardBg    = dark ? "#252529" : "#FFFFFF";
-    QString cardBord  = dark ? "#3A3A3F" : "#E6E0F7";
-    QString titleCol  = dark ? "#FFFFFF" : "#2C2825";
-    QString pCol      = dark ? "#A0A0A0" : "#7A7268";
+    if (!path.isEmpty()) {
+        if (cv::imwrite(path.toStdString(), out)) {
+            qDebug() << "Successfully saved to:" << path;
+        } else {
+            emit errorOccurred("Failed to save image.");
+        }
+    }
+}
 
-    QString html = QString(R"(
-<style>
-  body { font-family: 'DM Sans', sans-serif; color: %1; margin: 0; padding: 0; }
-  .card { background: %2; border: 1px solid %3; border-radius: 12px;
-          padding: 14px; margin-bottom: 10px; }
-  h3 { font-size: 14px; font-weight: 800; color: %4; margin: 0 0 6px; }
-  p  { font-size: 12px; color: %5; line-height: 1.7; margin: 4px 0; }
-  .badge      { display:inline-block; background:#EDE8FF; color:#5B4FCF;
-                border-radius:6px; padding:3px 9px; font-size:11px; font-weight:800; margin:2px; }
-  .badge-gold { display:inline-block; background:#FEF3C7; color:#B45309;
-                border-radius:6px; padding:3px 9px; font-size:11px; font-weight:800; margin:2px; }
-  .row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-</style>
-<div class='card'>
-  <h3>%1 Matching</h3>
-  <p>Pairwise descriptor matching results</p>
-</div>
-<div class='card'>
-  <h3>Metrics</h3>
-  <div class='row'>
-    <span class='badge'>⟺ %2 matches</span>
-    <span class='badge-gold'>⏱ %3</span>
-  </div>
-</div>
-%4
-<div class='card'>
-  <h3>About %1</h3>
-  <p>%5</p>
-</div>
-)")
-                       .arg(textColor)
-                       .arg(cardBg)
-                       .arg(cardBord)
-                       .arg(titleCol)
-                       .arg(pCol)
-                       .arg(methodName)
-                       .arg(matchCount)
-                       .arg(timingStr)
-                       .arg(extraHtml)
-                       .arg(methodName == "SSD"
-                                ? "Sum of Squared Differences measures descriptor similarity by summing pixel-wise squared differences. Lower scores = better matches."
-                                : "Normalized Cross-Correlation measures the cosine similarity between descriptor vectors. Scores near 1.0 indicate strong matches.");
+void AppController::runModule1() {
+    cv::Mat src = m_state.getImageA();
+    int methodIdx = m_currentParams.value("method", 1).toInt();
+    bool color = m_currentParams.value("color", false).toBool();
+    int window = m_currentParams.value("tileSize", 31).toInt();
+    int localMethod = m_currentParams.value("localMethod", 1).toInt();
+    
+    Thresholding::Result res;
+    QString methodName;
 
-    if (auto *sb = m_window->getInfoSidebar())
-        sb->setHtml(html);
+    if (methodIdx == 0) { res = Thresholding::optimalThreshold(src, color); methodName = "Optimal"; }
+    else if (methodIdx == 1) { res = Thresholding::otsuThreshold(src, color); methodName = "Otsu"; }
+    else if (methodIdx == 2) { res = Thresholding::spectralThreshold(src, color); methodName = "Spectral"; }
+    else { res = Thresholding::localThreshold(src, window, localMethod); methodName = "Local"; }
+
+    // UPDATE: Save the output state and emit it to canvasOut
+    m_state.setOutput(res.binary);
+    emit imageReady("canvasOut", matToBase64(res.binary));
+    emit processingFinished(methodName, res.timingMs, 1, res.threshold, "Success");
+}
+
+void AppController::runModule2() {
+    cv::Mat src = m_state.getImageA();
+    int methodIdx = m_currentParams.value("method", 2).toInt();
+    int k = m_currentParams.value("k", 3).toInt();
+    int window = m_currentParams.value("window", 11).toInt();
+
+    Clustering::Result res;
+    QString methodName;
+
+    if (methodIdx == 0) { res = Clustering::localThresholding(src, window); methodName = "Local Threshold"; }
+    else if (methodIdx == 1) { res = Clustering::regionGrowing(src, window); methodName = "Region Growing"; }
+    else { res = Clustering::kMeans(src, k); methodName = "K-Means"; }
+
+    // UPDATE: Save the output state and emit it to canvasOut
+    m_state.setOutput(res.clustered);
+    emit imageReady("canvasOut", matToBase64(res.clustered));
+    emit processingFinished(methodName, res.timingMs, res.numClusters, k, "Success");
+}
+
+void AppController::runModule3() {
+    cv::Mat src = m_state.getImageA();
+    int methodIdx = m_currentParams.value("method", 0).toInt();
+    double spat = m_currentParams.value("spatialRad", 10.0).toDouble();
+    double col = m_currentParams.value("colorRad", 10.0).toDouble();
+
+    Segmentation::Result res;
+    QString methodName;
+
+    if (methodIdx == 0) { res = Segmentation::meanShift(src, spat, col); methodName = "Mean Shift"; }
+    else { res = Segmentation::agglomerative(src, spat, col); methodName = "Agglomerative"; }
+
+    // UPDATE: Save the output state and emit it to canvasOut
+    m_state.setOutput(res.segmented);
+    emit imageReady("canvasOut", matToBase64(res.segmented));
+    emit processingFinished(methodName, res.timingMs, res.numSegments, 0.0, "Success");
+}
+
+void AppController::runModule4() {
+    emit errorOccurred("Face Detection module stub.");
+    emit processingFinished("Face Detection", 0, 0, 0, "Not implemented");
+}
+
+void AppController::runModule5() {
+    emit errorOccurred("Face Recognition module stub.");
+    emit processingFinished("Face Recognition", 0, 0, 0, "Not implemented");
+}
+
+QString AppController::getMethodName(int task, int methodIdx) const {
+    if (task == 1) {
+        static const char* n[] = {"Optimal","Otsu","Spectral","Local"};
+        return n[methodIdx];
+    } else if (task == 2) {
+        static const char* n[] = {"Local Thresholding","Region Growing","K-Means"};
+        return n[methodIdx];
+    }
+    return "Unknown";
 }

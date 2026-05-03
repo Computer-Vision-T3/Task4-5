@@ -10,7 +10,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt5 COMPONENTS Widgets REQUIRED)
+# WebEngine components for the HTML-based UI bridge
+find_package(Qt5 COMPONENTS Core Gui Widgets WebEngineWidgets WebChannel Concurrent REQUIRED)
 
 # ─── OpenCV & CURL ──────────────────────────────────────────────────
 find_package(OpenCV REQUIRED)
@@ -25,29 +26,36 @@ include_directories(
 )
 
 # ─── Source Files ───────────────────────────────────────────────────
+# Cleaned up: Only scanning for controllers and backend logic
 file(GLOB_RECURSE FRONTEND_SOURCES
-    "src/frontend/*.cpp"
-    "src/frontend/*.h"
-    "src/frontend/ui/*.ui"
+    "src/frontend/controllers/*.cpp"
+    "src/frontend/controllers/*.h"
 )
+
 file(GLOB_RECURSE BACKEND_SOURCES
     "src/backend/*.cpp"
     "src/backend/*.h"
 )
 
 # ─── Executable & Linking ───────────────────────────────────────────
-# ─── Executable & Linking ───────────────────────────────────────────
+# The 'launch' target now builds the WebEngine entry point
 add_executable(launch src/main.cpp ${FRONTEND_SOURCES} ${BACKEND_SOURCES})
 
 target_link_libraries(launch PRIVATE
+    Qt5::Core
+    Qt5::Gui
     Qt5::Widgets
+    Qt5::WebEngineWidgets
+    Qt5::WebChannel
+    Qt5::Concurrent
     ${OpenCV_LIBS}
     ${CURL_LIBRARIES}
-    tiff         # <--- Add this to fix the GDAL/TIFF undefined references
-    pthread      # <--- Recommended for multi-threading support in OpenCV
+    tiff                 # Fixes GDAL/TIFF undefined references
+    pthread              # Multi-threading support for OpenCV
     -lcurl
 )
 
+# Tool for testing thresholding logic independently
 add_executable(threshold_probe
     tools/threshold_probe.cpp
     src/backend/Module1_Thresholding/Thresholding.cpp
