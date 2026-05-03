@@ -23,11 +23,18 @@ void ParameterBox::updateForTask(int taskIndex) {
     clearLayout();
 
     switch (taskIndex) {
-    case 1: // ── Global Thresholding ─────────────────────────────────────────
-        addCombo        ("threshMethod","Method", {"Optimal", "Otsu", "Spectral"}, 0, 0);
-        addCheckBox     ("threshColor", "Apply to Color", false,                   0, 1);
+    case 1: // ── Global + Local Thresholding ───────────────────────────────
+        addCombo    ("threshMethod",      "Method",
+                     {"Optimal", "Otsu", "Spectral", "Local"},            0, 0);
+        addCheckBox ("threshColor",       "Apply to Color Channels", false, 0, 1);
+ 
+        // Local-specific controls  (always shown; visible context depends on
+        // the user selecting "Local" — you may hide/show them dynamically)
+        addSpinBox  ("threshWindow",      "Tile Size (Local)", 3, 201, 11,  0, 2);
+        addCombo    ("threshLocalMethod", "Local Method",
+                     {"Optimal per-tile", "Otsu per-tile"},               0, 3);
         break;
-
+        
     case 2: // ── Spatial & Basic Clustering ──────────────────────────────────
         addCombo        ("clusterMethod", "Method", {"Local Thresholding", "Region Growing", "K-Means"}, 0, 0);
         addSpinBox      ("clusterK",      "Clusters (K)", 2, 20, 3,                0, 1);

@@ -46,11 +46,91 @@ void AppController::handleApply() {
 }
 
 // ── Module 1 ─────────────────────────────────────────────────────────
+
 void AppController::runModule1()
 {
-    m_window->setStatusMessage("Module 1: Not Implemented Yet", false);
+    auto* params = m_window->getTopTaskBar()->getParameterBox();
+    cv::Mat src  = m_state.getImageA();
+ 
+    // ── Read parameters ──────────────────────────────────────────────────────
+    int  methodIdx   = params->comboIndex("threshMethod",  0);
+    bool applyColor  = params->boolValue ("threshColor",   false);
+    int  windowSize  = params->intValue  ("threshWindow",  11);   // local threshold tile
+    int  localMethod = params->comboIndex("threshLocalMethod", 0); // 0=Optimal, 1=Otsu
+ 
+    Thresholding::Result result;
+ 
+    // ── Dispatch ─────────────────────────────────────────────────────────────
+    switch (methodIdx)
+    {
+        case 0: // Optimal
+            result = Thresholding::optimalThreshold(src, applyColor);
+            break;
+        case 1: // Otsu
+            result = Thresholding::otsuThreshold(src, applyColor);
+            break;
+        case 2: // Spectral
+            result = Thresholding::spectralThreshold(src, applyColor);
+            break;
+        case 3: // Local
+            result = Thresholding::localThreshold(src, windowSize, localMethod);
+            break;
+        default:
+            m_window->setStatusMessage("Unknown method", false);
+            return;
+    }
+ 
+    // ── Push result to output panel ───────────────────────────────────────────
+    m_state.setOutput(result.binary);
+    m_window->getPanelOut()->displayImage(result.binary);
+ 
+    // ── Build status / info report ───────────────────────────────────────────
+    static const char* methodNames[] = {
+        "Optimal (Iterative)", "Otsu", "Spectral (Multi-Modal)", "Local (Adaptive)"
+    };
+ 
+    // Threshold string  –  may be multiple values for spectral
+    QString threshStr;
+    if (result.thresholds.size() == 1)
+        threshStr = QString("T = %1").arg(result.thresholds[0], 0, 'f', 1);
+    else
+    {
+        QStringList parts;
+        for (double t : result.thresholds)
+            parts << QString::number(t, 'f', 1);
+        threshStr = "T = [" + parts.join(", ") + "]";
+    }
+ 
+    QString extra;
+    if (methodIdx == 0)
+        extra = QString("Converged in <b>%1</b> iterations.<br>%2")
+                    .arg(result.iterations)
+                    .arg(threshStr);
+    else if (methodIdx == 2)
+        extra = QString("<b>%1</b> threshold(s) found (multi-modal).<br>%2")
+                    .arg(result.thresholds.size())
+                    .arg(threshStr);
+    else if (methodIdx == 3)
+        extra = QString("Tile size: <b>%1 × %1</b> px  |  Avg %2")
+                    .arg(windowSize)
+                    .arg(threshStr);
+    else
+        extra = threshStr;
+ 
+    showDetectionReport(
+        QString(methodNames[methodIdx]),
+        0,                  // no keypoints for thresholding
+        result.timingMs,
+        (src.channels() == 3 && applyColor),
+        extra
+    );
+ 
+    m_window->setStatusMessage(
+        QString("Threshold applied  (%1)  |  %2")
+            .arg(methodNames[methodIdx])
+            .arg(QString("%1 ms").arg(result.timingMs, 0, 'f', 1)),
+        true);
 }
-
 // ── Module 2 ─────────────────────────────────────────────────────────
 void AppController::runModule2()
 {
