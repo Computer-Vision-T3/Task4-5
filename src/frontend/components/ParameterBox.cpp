@@ -30,9 +30,11 @@ void ParameterBox::updateForTask(int taskIndex) {
  
         // Local-specific controls  (always shown; visible context depends on
         // the user selecting "Local" — you may hide/show them dynamically)
-        addSpinBox  ("threshWindow",      "Tile Size (Local)", 3, 201, 11,  0, 2);
+        addSpinBox  ("threshWindow",      "Tile Size (Local)", 3, 201, 31,  0, 2);
         addCombo    ("threshLocalMethod", "Local Method",
-                     {"Optimal per-tile", "Otsu per-tile"},               0, 3);
+                 {"Optimal per-tile", "Otsu per-tile"},               0, 3);
+        // Default to Otsu for per-tile local thresholding (user can still change)
+        if (auto* cb = findChild<QComboBox*>("threshLocalMethod")) cb->setCurrentIndex(1);
         break;
         
     case 2: // ── Spatial & Basic Clustering ──────────────────────────────────

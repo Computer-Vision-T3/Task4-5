@@ -370,6 +370,9 @@ Thresholding::Result Thresholding::localThreshold(const cv::Mat& src,
     if (src.channels() == 3) cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
     else                     gray = src.clone();
 
+    // Reduce high-frequency noise before local thresholding
+    cv::GaussianBlur(gray, gray, cv::Size(5,5), 1.0);
+
     cv::Mat out = cv::Mat::zeros(gray.size(), CV_8UC1);
 
     int halfW = windowSize / 2;

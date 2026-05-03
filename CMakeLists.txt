@@ -47,3 +47,11 @@ target_link_libraries(launch PRIVATE
     pthread      # <--- Recommended for multi-threading support in OpenCV
     -lcurl
 )
+
+add_executable(threshold_probe
+    tools/threshold_probe.cpp
+    src/backend/Module1_Thresholding/Thresholding.cpp
+)
+
+target_include_directories(threshold_probe PRIVATE src)
+target_link_libraries(threshold_probe PRIVATE ${OpenCV_LIBS})
