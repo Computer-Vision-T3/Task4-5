@@ -132,9 +132,62 @@ void AppController::runModule1()
         true);
 }
 // ── Module 2 ─────────────────────────────────────────────────────────
-void AppController::runModule2()
-{
-    m_window->setStatusMessage("Module 2: Not Implemented Yet", false);
+void AppController::runModule2() {
+    auto* params = m_window->getTopTaskBar()->getParameterBox();
+    cv::Mat src  = m_state.getImageA();
+
+    // Pull parameters from your ParameterBox
+    int methodIdx  = params->comboIndex("clusterMethod", 0);
+    int k          = params->intValue("clusterK", 3);
+    int windowSize = params->intValue("clusterWindow", 11);
+
+    Clustering::Result result;
+    QString methodName;
+    QString extraInfo;
+
+    switch (methodIdx) {
+        case 0: 
+            result = Clustering::localThresholding(src, windowSize);
+            methodName = "Local Thresholding";
+            extraInfo = QString("Window size: <b>%1x%1</b>").arg(windowSize);
+            break;
+        case 1: 
+            result = Clustering::regionGrowing(src, windowSize); // Using windowSize as color tolerance
+            methodName = "Region Growing";
+            extraInfo = QString("Color Tolerance: <b>%1</b>").arg(windowSize);
+            break;
+        case 2: 
+            result = Clustering::kMeans(src, k);
+            methodName = "K-Means Clustering";
+            extraInfo = QString("Number of K Clusters: <b>%1</b>").arg(k);
+            break;
+        default:
+            m_window->setStatusMessage("Unknown clustering method", false);
+            return;
+    }
+
+    // Push the result to the output panel
+    m_state.setOutput(result.clustered);
+    m_window->getPanelOut()->displayImage(result.clustered);
+    m_window->getPanelOut()->setTimingMs(result.timingMs);
+
+    // Update the Sidebar Report
+    showDetectionReport(
+        methodName,
+        result.numClusters, // Displaying number of clusters instead of keypoints
+        result.timingMs,
+        src.channels() == 3,
+        extraInfo
+    );
+
+    // Update the top task bar status
+    m_window->setStatusMessage(
+        QString("%1 applied | %2 Clusters | %3 ms")
+            .arg(methodName)
+            .arg(result.numClusters)
+            .arg(result.timingMs, 0, 'f', 1),
+        true
+    );
 }
 
 // ── Module 3 ─────────────────────────────────────────────────────────

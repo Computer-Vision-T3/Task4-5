@@ -7,6 +7,10 @@
  * Implements Mean Shift and Agglomerative Clustering from scratch.
  * No cv::pyrMeanShiftFiltering or similar high-level OpenCV calls are used.
  */
+
+namespace cv {
+    using Vec5f = Vec<float, 5>;
+}
 class Segmentation
 {
 public:

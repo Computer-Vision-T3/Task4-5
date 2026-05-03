@@ -37,11 +37,52 @@ void ParameterBox::updateForTask(int taskIndex) {
         if (auto* cb = findChild<QComboBox*>("threshLocalMethod")) cb->setCurrentIndex(1);
         break;
         
-    case 2: // ── Spatial & Basic Clustering ──────────────────────────────────
-        addCombo        ("clusterMethod", "Method", {"Local Thresholding", "Region Growing", "K-Means"}, 0, 0);
-        addSpinBox      ("clusterK",      "Clusters (K)", 2, 20, 3,                0, 1);
-        addSpinBox      ("clusterWindow", "Window Size", 3, 99, 11,                0, 2);
+    case 2: { //   Spatial & Basic Clustering 
+        addCombo("clusterMethod", "Method", {"Local Thresholding", "Region Growing", "K-Means"}, 0, 0);
+        
+        // Expanded the max range of the window/tolerance to 255 for Region Growing
+        addSpinBox("clusterK",      "Clusters (K)", 2, 50, 3,  0, 1);
+        addSpinBox("clusterWindow", "Window Size",  1, 255, 11, 0, 2);
+
+        // Dynamic UI switching
+        if (auto* methodCombo = findChild<QComboBox*>("clusterMethod")) {
+            connect(methodCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+                
+                auto* kBox   = findChild<QSpinBox*>("clusterK");
+                auto* winBox = findChild<QSpinBox*>("clusterWindow");
+                
+                if (!kBox || !winBox) return;
+
+                // The spinboxes are wrapped in a generic QWidget container alongside their labels.
+                // We need to hide/show the parent container to toggle both the label and the box.
+                QWidget* kContainer   = kBox->parentWidget();
+                QWidget* winContainer = winBox->parentWidget();
+                QLabel*  winLabel     = winContainer->findChild<QLabel*>("paramLabel");
+
+                if (idx == 0) { 
+                    // 0: Local Thresholding
+                    kContainer->hide();
+                    winContainer->show();
+                    if (winLabel) winLabel->setText("Window Size");
+                } 
+                else if (idx == 1) { 
+                    // 1: Region Growing
+                    kContainer->hide();
+                    winContainer->show();
+                    if (winLabel) winLabel->setText("Color Tolerance");
+                } 
+                else if (idx == 2) { 
+                    // 2: K-Means
+                    kContainer->show();
+                    winContainer->hide();
+                }
+            });
+            
+            // Trigger it once manually to set the correct initial state when the tab loads
+            methodCombo->currentIndexChanged(0);
+        }
         break;
+    }
 
     case 3: // ── Advanced Segmentation ───────────────────────────────────────
         addCombo        ("segMethod",     "Method", {"Mean Shift", "Agglomerative"}, 0, 0);
