@@ -1,6 +1,6 @@
 #include "Thresholding.h"
 
-#include <opencv2/imgproc.hpp>   // cv::cvtColor, cv::split, cv::merge  (NOT threshold)
+#include <opencv2/imgproc.hpp>
 #include <chrono>
 #include <cmath>
 #include <numeric>
@@ -29,8 +29,7 @@ std::vector<double> Thresholding::buildHistogram(const cv::Mat& gray)
 std::vector<double> Thresholding::smoothHistogram(const std::vector<double>& hist,
                                                    double sigma)
 {
-    // Build a small Gaussian kernel
-    int half = static_cast<int>(std::ceil(3.0 * sigma));
+    int half  = static_cast<int>(std::ceil(3.0 * sigma));
     int ksize = 2 * half + 1;
     std::vector<double> kernel(ksize);
     double sum = 0.0;
@@ -42,7 +41,6 @@ std::vector<double> Thresholding::smoothHistogram(const std::vector<double>& his
     }
     for (auto& k : kernel) k /= sum;
 
-    // Convolve histogram with kernel (mirror padding)
     std::vector<double> out(256, 0.0);
     for (int i = 0; i < 256; ++i)
     {
@@ -50,7 +48,6 @@ std::vector<double> Thresholding::smoothHistogram(const std::vector<double>& his
         for (int j = 0; j < ksize; ++j)
         {
             int idx = i - half + j;
-            // mirror padding
             if (idx < 0)   idx = -idx;
             if (idx > 255) idx = 510 - idx;
             idx = std::clamp(idx, 0, 255);
@@ -61,18 +58,36 @@ std::vector<double> Thresholding::smoothHistogram(const std::vector<double>& his
     return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  BUG 3 FIXED: was returning every tiny local bump as a "peak".
+//  Fix: only keep peaks whose height exceeds 2× the mean histogram density.
+//  This filters out noise bumps caused by quantisation and image noise.
+// ─────────────────────────────────────────────────────────────────────────────
 std::vector<int> Thresholding::findPeaks(const std::vector<double>& hist)
 {
+    // mean bin density = 1/256 (since histogram is normalised).
+    // A real mode must contain meaningfully more pixels than an average bin.
+    double meanVal = 0.0;
+    for (double v : hist) meanVal += v;
+    meanVal /= 256.0;
+    double minProminence = meanVal * 2.0;  // peaks must be at least 2× average
+
     std::vector<int> peaks;
     for (int i = 1; i < 255; ++i)
-        if (hist[i] > hist[i - 1] && hist[i] > hist[i + 1])
+    {
+        if (hist[i] > hist[i - 1] &&
+            hist[i] > hist[i + 1] &&
+            hist[i] > minProminence)
+        {
             peaks.push_back(i);
+        }
+    }
     return peaks;
 }
 
 int Thresholding::findValley(const std::vector<double>& hist, int left, int right)
 {
-    int minIdx = left + 1;
+    int minIdx    = left + 1;
     double minVal = hist[minIdx];
     for (int i = left + 1; i < right; ++i)
     {
@@ -111,22 +126,33 @@ cv::Mat Thresholding::applyThresholdColor(const cv::Mat& bgr,
     return merged;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  BUG 1 FIXED (two sub-issues):
+//
+//  Sub-issue A — wrong init:
+//    Old: T = (minVal + maxVal) / 2
+//    Problem: minVal is almost always 0 (black border in medical images) and
+//    maxVal is ~255. So T always starts at ~127, far from the true background.
+//    Fix: T = mean pixel value — stays close to the actual image centre of mass.
+//
+//  Sub-issue B — wrong convergence:
+//    Old:  if (|newT - T| < 0.5) { T = newT; break; }
+//    Problem: overwrites T with newT before breaking, so the returned value is
+//    the last newT (may oscillate between two values ±0.49).
+//    Fix:  if (|newT - T| < 0.5) break;   // keep T, which is already settled
+// ─────────────────────────────────────────────────────────────────────────────
 double Thresholding::computeOptimal(const cv::Mat& gray, int& outIter)
 {
-    // Initial threshold = mean of (min + max) pixel values
-    double minVal, maxVal;
-    // Manual min/max to avoid builtins
-    minVal = 255; maxVal = 0;
+    // Mean-based initial threshold (robust for images with large dark borders)
+    double totalSum = 0.0;
+    const int totalPix = gray.rows * gray.cols;
     for (int r = 0; r < gray.rows; ++r)
     {
         const uchar* row = gray.ptr<uchar>(r);
         for (int c = 0; c < gray.cols; ++c)
-        {
-            if (row[c] < minVal) minVal = row[c];
-            if (row[c] > maxVal) maxVal = row[c];
-        }
+            totalSum += row[c];
     }
-    double T = (minVal + maxVal) / 2.0;
+    double T = totalSum / totalPix;
 
     outIter = 0;
     while (true)
@@ -147,42 +173,54 @@ double Thresholding::computeOptimal(const cv::Mat& gray, int& outIter)
         double meanBg = (cntBg > 0) ? sumBg / cntBg : 0.0;
         double meanFg = (cntFg > 0) ? sumFg / cntFg : 255.0;
         double newT   = (meanBg + meanFg) / 2.0;
-        if (std::fabs(newT - T) < 0.5) { T = newT; break; }
+
+        if (std::fabs(newT - T) < 0.5) break;  // BUG FIX: break WITHOUT overwriting T
         T = newT;
-        if (outIter > 200) break; // safety
+        if (outIter > 200) break;
     }
     return T;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  BUG 2 FIXED:
+//    Old: bestT = t    (stores split index, off-by-one)
+//    Fix: bestT = t+1  (pixels ABOVE t+1 are foreground — matches applyThreshold)
+//
+//    The loop range t=0..255 is correct; t=255 has empty class-1 and is
+//    filtered by the w1<1e-10 guard, so no out-of-bounds risk.
+// ─────────────────────────────────────────────────────────────────────────────
 double Thresholding::computeOtsu(const cv::Mat& gray)
 {
     auto hist = buildHistogram(gray);
 
-    double bestVar = -1.0;
-    double bestT   = 0.0;
+    double bestVar   = -1.0;
+    double bestT     = 128.0;
     double totalMean = 0.0;
     for (int i = 0; i < 256; ++i) totalMean += i * hist[i];
 
     double w0 = 0.0, mean0 = 0.0;
-    for (int t = 0; t < 255; ++t)
+    for (int t = 0; t < 256; ++t)
     {
-        w0     += hist[t];
-        mean0  += t * hist[t];
+        w0    += hist[t];
+        mean0 += t * hist[t];
         double w1 = 1.0 - w0;
         if (w0 < 1e-10 || w1 < 1e-10) continue;
         double m0  = mean0 / w0;
         double m1  = (totalMean - mean0) / w1;
         double var = w0 * w1 * (m0 - m1) * (m0 - m1);
-        if (var > bestVar) { bestVar = var; bestT = t; }
+        if (var > bestVar)
+        {
+            bestVar = var;
+            bestT   = t + 1;  // BUG FIX: was `t`, now `t+1`
+        }
     }
     return bestT;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  PUBLIC API
+//  PUBLIC API  (unchanged structure, bugs fixed in helpers above)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── Optimal ──────────────────────────────────────────────────────────────────
 Thresholding::Result Thresholding::optimalThreshold(const cv::Mat& src,
                                                      bool applyToColor)
 {
@@ -198,7 +236,7 @@ Thresholding::Result Thresholding::optimalThreshold(const cv::Mat& src,
         for (int ch = 0; ch < 3; ++ch)
             thresholds[ch] = computeOptimal(channels[ch], iters);
         res.thresholds = thresholds;
-        res.threshold  = thresholds[1]; // Green channel representative
+        res.threshold  = thresholds[1];
         res.iterations = iters;
         res.binary     = applyThresholdColor(src, thresholds);
     }
@@ -221,7 +259,6 @@ Thresholding::Result Thresholding::optimalThreshold(const cv::Mat& src,
     return res;
 }
 
-// ── Otsu ─────────────────────────────────────────────────────────────────────
 Thresholding::Result Thresholding::otsuThreshold(const cv::Mat& src,
                                                   bool applyToColor)
 {
@@ -257,7 +294,6 @@ Thresholding::Result Thresholding::otsuThreshold(const cv::Mat& src,
     return res;
 }
 
-// ── Spectral ──────────────────────────────────────────────────────────────────
 Thresholding::Result Thresholding::spectralThreshold(const cv::Mat& src,
                                                       bool applyToColor,
                                                       double smoothSigma)
@@ -266,19 +302,14 @@ Thresholding::Result Thresholding::spectralThreshold(const cv::Mat& src,
     Result res;
     res.iterations = 1;
 
-    // Helper lambda: compute spectral thresholds for a single-channel image
     auto computeSpectral = [&](const cv::Mat& gray) -> std::vector<double>
     {
         auto hist    = buildHistogram(gray);
         auto smoothH = smoothHistogram(hist, smoothSigma);
-        auto peaks   = findPeaks(smoothH);
+        auto peaks   = findPeaks(smoothH);  // BUG 3 FIXED: only real peaks returned
 
-        // Need at least 2 peaks to place a threshold
         if (peaks.size() < 2)
-        {
-            // Fallback to Otsu if histogram is not multi-modal
             return {computeOtsu(gray)};
-        }
 
         std::vector<double> thresholds;
         for (size_t i = 0; i + 1 < peaks.size(); ++i)
@@ -289,16 +320,10 @@ Thresholding::Result Thresholding::spectralThreshold(const cv::Mat& src,
         return thresholds;
     };
 
-    // Apply multi-threshold binarisation:
-    // For N thresholds T1 < T2 < ... < TN:
-    //   pixel < T1     → 0
-    //   T1 ≤ pixel < T2→ intensity_step (e.g. 85 for 2 thresholds → 3 levels)
-    //   ...
-    //   pixel ≥ TN     → 255
     auto multiThreshApply = [](const cv::Mat& gray,
                                 const std::vector<double>& thresholds) -> cv::Mat
     {
-        int n = static_cast<int>(thresholds.size()); // number of thresholds
+        int n      = static_cast<int>(thresholds.size());
         int levels = n + 1;
         cv::Mat out(gray.size(), CV_8UC1);
         for (int r = 0; r < gray.rows; ++r)
@@ -307,11 +332,10 @@ Thresholding::Result Thresholding::spectralThreshold(const cv::Mat& src,
             uchar*       dst = out.ptr<uchar>(r);
             for (int c = 0; c < gray.cols; ++c)
             {
-                double v = src[c];
-                int level = 0;
+                double v     = src[c];
+                int    level = 0;
                 for (int t = 0; t < n; ++t)
                     if (v >= thresholds[t]) level = t + 1;
-                // map level to 0..255
                 dst[c] = static_cast<uchar>(
                     std::round(255.0 * level / (levels - 1)));
             }
@@ -323,14 +347,10 @@ Thresholding::Result Thresholding::spectralThreshold(const cv::Mat& src,
     {
         std::vector<cv::Mat> channels(3);
         cv::split(src, channels);
-        // Use green channel for valley detection (representative)
         auto thresholds = computeSpectral(channels[1]);
-
-        // Apply same thresholds to all channels
         std::vector<cv::Mat> outChannels(3);
         for (int ch = 0; ch < 3; ++ch)
             outChannels[ch] = multiThreshApply(channels[ch], thresholds);
-
         cv::merge(outChannels, res.binary);
         res.thresholds = thresholds;
         res.threshold  = thresholds[0];
@@ -352,7 +372,6 @@ Thresholding::Result Thresholding::spectralThreshold(const cv::Mat& src,
     return res;
 }
 
-// ── Local (Adaptive) ─────────────────────────────────────────────────────────
 Thresholding::Result Thresholding::localThreshold(const cv::Mat& src,
                                                    int windowSize,
                                                    int method)
@@ -361,21 +380,15 @@ Thresholding::Result Thresholding::localThreshold(const cv::Mat& src,
     Result res;
     res.iterations = 1;
 
-    // Ensure windowSize is odd and at least 3
-    if (windowSize < 3)  windowSize = 3;
+    if (windowSize < 3)      windowSize = 3;
     if (windowSize % 2 == 0) windowSize += 1;
 
-    // Convert to grayscale
     cv::Mat gray;
     if (src.channels() == 3) cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
     else                     gray = src.clone();
 
-    // Reduce high-frequency noise before local thresholding
-    cv::GaussianBlur(gray, gray, cv::Size(5,5), 1.0);
-
     cv::Mat out = cv::Mat::zeros(gray.size(), CV_8UC1);
 
-    int halfW = windowSize / 2;
     double sumThresh = 0.0;
     int tileCount    = 0;
 
@@ -383,15 +396,13 @@ Thresholding::Result Thresholding::localThreshold(const cv::Mat& src,
     {
         for (int c = 0; c < gray.cols; c += windowSize)
         {
-            // Tile boundaries (clamp to image)
             int r2 = std::min(r + windowSize, gray.rows);
             int c2 = std::min(c + windowSize, gray.cols);
             cv::Mat tile = gray(cv::Rect(c, r, c2 - c, r2 - r));
 
-            // Skip tiles that are too small or uniform
             if (tile.rows < 2 || tile.cols < 2) continue;
 
-            double T = 0.0;
+            double T  = 0.0;
             int dummy = 0;
             if (method == 1) T = computeOtsu(tile);
             else             T = computeOptimal(tile, dummy);
@@ -399,7 +410,6 @@ Thresholding::Result Thresholding::localThreshold(const cv::Mat& src,
             sumThresh += T;
             ++tileCount;
 
-            // Apply threshold within tile
             for (int tr = 0; tr < tile.rows; ++tr)
             {
                 const uchar* tSrc = tile.ptr<uchar>(tr);
